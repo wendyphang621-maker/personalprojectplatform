@@ -112,7 +112,7 @@
         </div>
         <div class="local-mode-switch">
           <span>本地模式</span>
-          <el-switch v-model="store.localMode" active-text="开" inactive-text="关" />
+          <el-switch :model-value="store.localMode" active-text="开" inactive-text="关" @change="handleLocalModeChange" />
         </div>
         <div class="logout-btn" @click="handleLogout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -306,7 +306,8 @@
 
 <script setup>
 import { ref, reactive, h, computed, onMounted } from 'vue'
-import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase } from './store.js'
+import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode } from './store.js'
+import { setLocalMode, getLocalMode } from './supabase.js'
 
 let pendingNavKey = null
 let pendingSubKey = null
@@ -564,6 +565,16 @@ function confirmAddTask() {
 
 function handleLoginSuccess() {
   currentPage.value = 'workbench'
+}
+
+function handleLocalModeChange(enabled) {
+  toggleLocalMode(enabled)
+  setLocalMode(enabled)
+  if (enabled) {
+    alert('已切换到本地模式，所有数据读写仅走浏览器本地存储')
+  } else {
+    alert('已切换到云端模式，默认读写Supabase，IndexedDB做离线兜底')
+  }
 }
 
 function handleLogout() {

@@ -1,12 +1,157 @@
 import { sanitizePathSegment, generateMinimalFileName, isPathTooLong, cleanAndValidateFileName } from './utils/common.js'
 
 let supabase = null
+let localConfig = null
+
+const LOCAL_CONFIG_KEY = 'project_workbench_local_config'
+const CONFIG_FILE_NAME = 'settings.local.json'
+const CONFIG_DIR_NAME = '.trae'
+
+function loadLocalConfig() {
+  try {
+    const configStr = localStorage.getItem(LOCAL_CONFIG_KEY)
+    if (configStr) {
+      localConfig = JSON.parse(configStr)
+      console.log('[配置] 从本地存储加载配置成功')
+    } else {
+      localConfig = {
+        supabase: {
+          SUPABASE_URL: '',
+          SUPABASE_KEY: '',
+          BUCKET_NAME: 'customer_light_files'
+        },
+        app: {
+          localMode: true,
+          themeColor: '#409EFF',
+          language: 'zh-CN'
+        }
+      }
+      saveLocalConfig()
+    }
+  } catch (e) {
+    console.error('[配置] 加载本地配置失败:', e)
+    localConfig = {
+      supabase: {
+        SUPABASE_URL: '',
+        SUPABASE_KEY: '',
+        BUCKET_NAME: 'customer_light_files'
+      },
+      app: {
+        localMode: true,
+        themeColor: '#409EFF',
+        language: 'zh-CN'
+      }
+    }
+    saveLocalConfig()
+  }
+}
+
+function saveLocalConfig() {
+  try {
+    localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(localConfig))
+    console.log('[配置] 配置已持久化到本地存储')
+  } catch (e) {
+    console.error('[配置] 保存本地配置失败:', e)
+  }
+}
+
+export function exportConfigFile() {
+  try {
+    const configStr = JSON.stringify(localConfig, null, 2)
+    const blob = new Blob([configStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = CONFIG_FILE_NAME
+    a.click()
+    URL.revokeObjectURL(url)
+    console.log('[配置] 配置文件已导出')
+    return { success: true, message: '配置文件已导出' }
+  } catch (e) {
+    console.error('[配置] 导出配置文件失败:', e)
+    return { success: false, error: e.message }
+  }
+}
+
+export function importConfigFile(file) {
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const config = JSON.parse(e.target.result)
+          if (config.supabase) {
+            if (config.supabase.SUPABASE_URL) {
+              setLocalConfigValue('supabase.SUPABASE_URL', config.supabase.SUPABASE_URL)
+            }
+            if (config.supabase.SUPABASE_KEY) {
+              setLocalConfigValue('supabase.SUPABASE_KEY', config.supabase.SUPABASE_KEY)
+            }
+            if (config.supabase.BUCKET_NAME) {
+              setLocalConfigValue('supabase.BUCKET_NAME', config.supabase.BUCKET_NAME)
+            }
+          }
+          if (config.app) {
+            if (config.app.localMode !== undefined) {
+              setLocalConfigValue('app.localMode', config.app.localMode)
+            }
+            if (config.app.themeColor) {
+              setLocalConfigValue('app.themeColor', config.app.themeColor)
+            }
+            if (config.app.language) {
+              setLocalConfigValue('app.language', config.app.language)
+            }
+          }
+          supabase = null
+          console.log('[配置] 配置文件已导入')
+          resolve({ success: true, message: '配置文件已导入' })
+        } catch (parseError) {
+          console.error('[配置] 解析配置文件失败:', parseError)
+          resolve({ success: false, error: '配置文件格式错误' })
+        }
+      }
+      reader.onerror = () => {
+        resolve({ success: false, error: '读取文件失败' })
+      }
+      reader.readAsText(file)
+    } catch (e) {
+      console.error('[配置] 导入配置文件失败:', e)
+      resolve({ success: false, error: e.message })
+    }
+  })
+}
+
+function getLocalConfigValue(keyPath) {
+  if (!localConfig) loadLocalConfig()
+  const keys = keyPath.split('.')
+  let value = localConfig
+  for (const key of keys) {
+    value = value?.[key]
+    if (value === undefined) return ''
+  }
+  return value
+}
+
+function setLocalConfigValue(keyPath, value) {
+  if (!localConfig) loadLocalConfig()
+  const keys = keyPath.split('.')
+  let obj = localConfig
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!obj[keys[i]]) obj[keys[i]] = {}
+    obj = obj[keys[i]]
+  }
+  obj[keys[keys.length - 1]] = value
+  saveLocalConfig()
+}
+
+loadLocalConfig()
 
 function isProduction() {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
   return import.meta.env.PROD || 
-         window.location.hostname.includes('netlify.app') || 
-         window.location.hostname.includes('.vercel.app') ||
-         window.location.hostname.includes('www.') ||
+         hostname.includes('netlify.app') || 
+         hostname.includes('.vercel.app') ||
+         hostname.includes('www.') ||
          import.meta.env.VITE_ENV === 'production'
 }
 
@@ -17,7 +162,7 @@ function shouldForceProduction() {
 function logEnvironmentInfo() {
   const production = isProduction()
   const forceProd = shouldForceProduction()
-  const host = window.location.hostname
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
   const env = import.meta.env.MODE || 'unknown'
   
   console.log('=======================================')
@@ -56,17 +201,17 @@ export async function getSupabase() {
   let configSource = ''
   
   if (shouldForceProduction()) {
-    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || ''
-    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || ''
+    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
+    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
     configSource = '线上正式配置(强制)'
   } else if (isProduction()) {
-    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || ''
-    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || ''
+    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
+    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
     configSource = '线上正式配置'
   } else {
-    supabaseUrl = localStorage.getItem('supabase_url') || import.meta.env.VITE_DEV_SUPABASE_URL || ''
-    supabaseKey = localStorage.getItem('supabase_key') || import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || ''
-    configSource = '用户配置或开发配置'
+    supabaseUrl = getLocalConfigValue('supabase.SUPABASE_URL') || localStorage.getItem('supabase_url') || import.meta.env.VITE_DEV_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || ''
+    supabaseKey = getLocalConfigValue('supabase.SUPABASE_KEY') || localStorage.getItem('supabase_key') || import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    configSource = getLocalConfigValue('supabase.SUPABASE_URL') ? '本机私有配置' : (localStorage.getItem('supabase_url') ? '用户临时缓存' : '开发环境变量')
   }
   
   console.log(`[Supabase] 配置来源: ${configSource}`)
@@ -74,7 +219,7 @@ export async function getSupabase() {
   console.log(`[Supabase] KEY: ${supabaseKey ? '已配置(隐藏)' : '(未配置)'}`)
   
   if (!supabaseUrl || !supabaseKey) {
-    console.error('[Supabase] 配置不完整，无法连接')
+    console.error('[Supabase] 配置不完整，无法连接，系统自动切换到本地模式')
     return null
   }
   
@@ -131,30 +276,52 @@ export async function testSupabaseConnection(url, key, bucketName = 'customer_li
   }
 }
 
-export function saveSupabaseConfig(url, key, bucketName = 'customer-files') {
+export function saveSupabaseConfig(url, key, bucketName = 'customer_light_files') {
+  setLocalConfigValue('supabase.SUPABASE_URL', url)
+  setLocalConfigValue('supabase.SUPABASE_KEY', key)
+  setLocalConfigValue('supabase.BUCKET_NAME', bucketName)
   localStorage.setItem('supabase_url', url)
   localStorage.setItem('supabase_key', key)
   localStorage.setItem('supabase_bucket', bucketName)
   supabase = null
+  console.log('[配置] Supabase配置已保存到本机私有配置')
 }
 
 export function getSupabaseConfig() {
+  const localUrl = getLocalConfigValue('supabase.SUPABASE_URL')
+  const localKey = getLocalConfigValue('supabase.SUPABASE_KEY')
+  const localBucket = getLocalConfigValue('supabase.BUCKET_NAME') || 'customer_light_files'
+  
   return {
-    url: localStorage.getItem('supabase_url') || import.meta.env.VITE_SUPABASE_URL || '',
-    key: localStorage.getItem('supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-    bucket: localStorage.getItem('supabase_bucket') || 'customer-files'
+    url: localUrl || localStorage.getItem('supabase_url') || import.meta.env.VITE_SUPABASE_URL || '',
+    key: localKey || localStorage.getItem('supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+    bucket: localBucket || localStorage.getItem('supabase_bucket') || 'customer_light_files'
   }
 }
 
 export function clearSupabaseConfig() {
+  setLocalConfigValue('supabase.SUPABASE_URL', '')
+  setLocalConfigValue('supabase.SUPABASE_KEY', '')
+  setLocalConfigValue('supabase.BUCKET_NAME', 'customer_light_files')
   localStorage.removeItem('supabase_url')
   localStorage.removeItem('supabase_key')
   localStorage.removeItem('supabase_bucket')
   supabase = null
+  console.log('[配置] Supabase配置已清除')
 }
 
 export function getSupabaseBucket() {
-  return localStorage.getItem('supabase_bucket') || 'customer-files'
+  return getLocalConfigValue('supabase.BUCKET_NAME') || localStorage.getItem('supabase_bucket') || 'customer_light_files'
+}
+
+export function getLocalMode() {
+  const mode = getLocalConfigValue('app.localMode')
+  return mode === null ? true : mode
+}
+
+export function setLocalMode(mode) {
+  setLocalConfigValue('app.localMode', mode)
+  console.log(`[配置] 本地模式已${mode ? '开启' : '关闭'}`)
 }
 
 export async function syncToSupabase(tableName, data) {

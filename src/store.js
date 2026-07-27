@@ -970,7 +970,60 @@ function clearOldLocalStorage() {
   }
 }
 
+export function toggleLocalMode(enable) {
+  store.localMode = enable
+  console.log(`[模式切换] 本地模式${enable ? '开启' : '关闭'}`)
+  if (enable) {
+    console.log('[模式切换] 所有数据读写仅走浏览器本地存储')
+  } else {
+    console.log('[模式切换] 启用云端模式，默认读写Supabase，IndexedDB做离线兜底')
+  }
+}
+
+export async function checkDataConflict() {
+  if (store.localMode) {
+    return { hasConflict: false, message: '本地模式下无需检查冲突' }
+  }
+  
+  try {
+    const { fetchFromSupabase } = await import('./supabase.js')
+    const localCount = {
+      customers: store.customers.length,
+      sampleDeliveries: store.sampleDeliveries.length,
+      dailyTodos: store.dailyTodos.length
+    }
+    
+    const cloudCount = {}
+    const tables = ['customers', 'sample_deliveries', 'daily_todos']
+    
+    for (const table of tables) {
+      const result = await fetchFromSupabase(table)
+      cloudCount[table] = result.data ? result.data.length : 0
+    }
+    
+    const hasConflict = Object.keys(localCount).some(key => localCount[key] !== cloudCount[key])
+    
+    if (hasConflict) {
+      return {
+        hasConflict: true,
+        localCount,
+        cloudCount,
+        message: '检测到本地与云端数据不一致'
+      }
+    }
+    
+    return { hasConflict: false, message: '本地与云端数据一致' }
+  } catch (error) {
+    return { hasConflict: false, message: '无法连接云端，跳过冲突检查' }
+  }
+}
+
 export async function syncAllFromSupabase(showToast = true) {
+  if (store.localMode) {
+    console.log('[同步] ⚠️ 本地模式已开启，跳过云端同步')
+    return { success: false, error: 'Local mode enabled', totalCount: 0, successCount: 0 }
+  }
+  
   console.log('=======================================')
   console.log('[同步] 开始全量同步后端数据')
   console.log('=======================================')

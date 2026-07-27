@@ -6,8 +6,8 @@ const RETRY_DELAY = 100
 let db = null
 
 function getDBName() {
-  const domain = window.location.hostname || 'local'
-  const account = localStorage.getItem('user') || 'anonymous'
+  const domain = typeof window !== 'undefined' ? window.location.hostname : 'local'
+  const account = typeof window !== 'undefined' ? localStorage.getItem('user') : 'anonymous'
   return `MaterialCacheDB_${domain}_${account}`
 }
 

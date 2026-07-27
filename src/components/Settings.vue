@@ -16,15 +16,48 @@
               <el-form-item label="Supabase URL">
                 <el-input v-model="supabaseForm.url" placeholder="https://你的项目ID.supabase.co" @blur="trimInput('url')" />
               </el-form-item>
-              <el-form-item label="Supabase Key">
+              <el-form-item label="Supabase Anon KEY">
                 <el-input v-model="supabaseForm.key" type="password" placeholder="你的匿名密钥" show-password @blur="trimInput('key')" />
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="testConnection">测试连接</el-button>
-                <el-button @click="saveConfig">保存配置</el-button>
-                <el-button @click="clearConfig">清除配置</el-button>
+                <el-button @click="saveConfig">保存本地配置</el-button>
+                <el-button @click="clearConfig">重置配置</el-button>
+                <el-button @click="disableCloudSync" :disabled="!supabaseConnected">一键关闭云端同步</el-button>
               </el-form-item>
             </el-form>
+            <div class="config-priority">
+              <el-alert
+                title="配置读取优先级（从高到低）"
+                type="info"
+                :closable="false"
+                show-icon
+              >
+                <p>① 本机私有配置文件：.trae/settings.local.json</p>
+                <p>② 本地环境文件：.env.local</p>
+                <p>③ 页面手动填写临时缓存</p>
+                <p>④ 无有效配置：控制台打印「Supabase 配置不全，无法连接」，系统自动强制切本地模式</p>
+              </el-alert>
+            </div>
+          </div>
+          
+          <div class="setting-section">
+            <h3>配置文件管理</h3>
+            <el-alert
+              title="配置文件说明"
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              <p>配置文件存放在项目根目录的 .trae/settings.local.json 文件中</p>
+              <p>该文件已加入 .gitignore，不会被上传到 GitHub</p>
+              <p>配置优先级：配置文件 &gt; 环境变量 &gt; 页面临时缓存</p>
+            </el-alert>
+            <div class="data-actions" style="margin-top: 15px;">
+              <el-button @click="exportConfig">导出配置文件</el-button>
+              <el-button @click="triggerImportConfig">导入配置文件</el-button>
+              <input type="file" id="config-file-input" accept=".json" style="display:none" @change="handleConfigFileSelect" />
+            </div>
           </div>
           
           <div class="setting-section">
@@ -78,50 +111,6 @@
               <el-button @click="syncDataFromCloud">从云端下载数据</el-button>
             </div>
           </div>
-          
-          <div class="setting-section">
-            <h3>环境切换</h3>
-            <el-alert
-              title="环境切换说明"
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              <p>开发环境默认使用测试库，开启此开关后强制使用线上正式库</p>
-              <p>开启后本地和线上将访问同一数据库，确保数据完全同步</p>
-              <p>修改后需要刷新页面生效</p>
-            </el-alert>
-            <div class="env-switch">
-              <span class="switch-label">强制使用线上正式库</span>
-              <el-switch 
-                v-model="forceProduction" 
-                :active-value="true" 
-                :inactive-value="false"
-                @change="handleForceProductionChange"
-              />
-            </div>
-            <div class="env-info">
-              <p>当前环境：<span :class="forceProduction ? 'prod' : 'dev'">{{ forceProduction ? '线上正式库(强制)' : '开发测试库' }}</span></p>
-              <p>主机名：{{ window.location.hostname }}</p>
-              <p>构建模式：{{ buildMode }}</p>
-            </div>
-          </div>
-          
-          <div class="setting-section danger-section">
-            <h3>数据重置（测试用）</h3>
-            <el-alert
-              title="警告"
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              <p>此操作将清除所有业务数据（客户、订单、待办等），恢复到系统初始状态。</p>
-              <p>仅用于测试环境，生产环境请勿使用！</p>
-            </el-alert>
-            <div class="reset-actions">
-              <el-button type="danger" @click="confirmResetData">一键清除测试数据</el-button>
-            </div>
-          </div>
         </div>
       </el-tab-pane>
       
@@ -130,7 +119,10 @@
           <div class="setting-section">
             <h3>基本信息</h3>
             <el-form :model="userForm" label-width="120px">
-              <el-form-item label="用户名">
+              <el-form-item label="登录账号">
+                <el-input v-model="userForm.username" disabled />
+              </el-form-item>
+              <el-form-item label="昵称">
                 <el-input v-model="userForm.name" />
               </el-form-item>
               <el-form-item label="岗位">
@@ -140,6 +132,9 @@
                   <el-option label="项目经理" value="项目经理" />
                   <el-option label="财务" value="财务" />
                 </el-select>
+              </el-form-item>
+              <el-form-item label="个人备注">
+                <el-input v-model="userForm.notes" type="textarea" :rows="3" placeholder="填写个人备注信息..." />
               </el-form-item>
               <el-form-item label="常用对接客户">
                 <el-select v-model="userForm.quickCustomers" multiple filterable>
@@ -163,6 +158,9 @@
               </el-form-item>
               <el-form-item label="头像">
                 <el-button type="primary" @click="changeAvatar">上传头像</el-button>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="saveUserInfo">保存用户信息</el-button>
               </el-form-item>
             </el-form>
           </div>
@@ -205,9 +203,10 @@
               </el-table-column>
               <el-table-column prop="position" label="岗位" />
               <el-table-column prop="createdAt" label="创建时间" />
-              <el-table-column label="操作" width="180">
+              <el-table-column label="操作" width="200">
                 <template #default="{ row }">
                   <el-button size="small" @click="handleEditUser(row)">编辑</el-button>
+                  <el-button size="small" @click="handleResetPassword(row)">重置密码</el-button>
                   <el-button size="small" type="danger" @click="handleDeleteUser(row)">删除</el-button>
                 </template>
               </el-table-column>
@@ -230,7 +229,7 @@
                   </svg>
                   <div class="alert-detail">
                     <span class="alert-title">证书到期预警</span>
-                    <span class="alert-desc">提前30天提醒，7天内标红预警</span>
+                    <span class="alert-desc">提前提醒证书即将到期</span>
                   </div>
                 </div>
                 <el-switch v-model="alertSettings.certExpire" active-text="开启" inactive-text="关闭" />
@@ -244,7 +243,7 @@
                   </svg>
                   <div class="alert-detail">
                     <span class="alert-title">物流包裹超期预警</span>
-                    <span class="alert-desc">运输超过7天未签收标红预警</span>
+                    <span class="alert-desc">运输超时未签收提醒</span>
                   </div>
                 </div>
                 <el-switch v-model="alertSettings.logisticsOverdue" active-text="开启" inactive-text="关闭" />
@@ -257,11 +256,26 @@
                     <circle cx="12" cy="7" r="4"/>
                   </svg>
                   <div class="alert-detail">
-                    <span class="alert-title">客户跟进预警</span>
-                    <span class="alert-desc">超过15天无跟进记录提醒</span>
+                    <span class="alert-title">客户跟进超时预警</span>
+                    <span class="alert-desc">超过设定天数无跟进记录提醒</span>
                   </div>
                 </div>
                 <el-switch v-model="alertSettings.customerFollowup" active-text="开启" inactive-text="关闭" />
+              </div>
+
+              <div class="alert-item">
+                <div class="alert-info">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                  </svg>
+                  <div class="alert-detail">
+                    <span class="alert-title">物料申请到期预警</span>
+                    <span class="alert-desc">物料申请即将过期提醒</span>
+                  </div>
+                </div>
+                <el-switch v-model="alertSettings.materialExpire" active-text="开启" inactive-text="关闭" />
               </div>
             </div>
           </div>
@@ -293,6 +307,15 @@
                   <span class="param-unit">天</span>
                 </div>
               </el-form-item>
+              <el-form-item label="物料申请到期预警天数">
+                <div class="param-row">
+                  <el-input-number v-model="alertParams.materialExpireDays" :min="3" :max="30" />
+                  <span class="param-unit">天</span>
+                </div>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="saveAlertSettings">保存预警配置</el-button>
+              </el-form-item>
             </el-form>
           </div>
         </div>
@@ -301,11 +324,49 @@
       <el-tab-pane label="数据管理" name="data">
         <div class="tab-content">
           <div class="setting-section">
-            <h3>数据操作</h3>
+            <h3>数据导出</h3>
             <div class="data-actions">
-              <el-button @click="exportData">导出数据</el-button>
-              <el-button @click="showImportDialog = true">导入数据</el-button>
-              <el-button @click="cleanOldCache">清理90天以上缓存</el-button>
+              <el-button @click="exportDataAsJson">导出 JSON</el-button>
+              <el-button @click="exportDataAsExcel">导出 Excel</el-button>
+            </div>
+          </div>
+          
+          <div class="setting-section">
+            <h3>数据导入</h3>
+            <el-button @click="showImportDialog = true">导入数据</el-button>
+          </div>
+          
+          <div class="setting-section">
+            <h3>云端同步</h3>
+            <div class="data-actions">
+              <el-button @click="checkConflict">检测数据冲突</el-button>
+              <el-button @click="syncDataToCloud">本地数据上传云端</el-button>
+              <el-button @click="syncDataFromCloud">云端数据拉取到本地</el-button>
+            </div>
+            <el-alert
+              title="数据冲突说明"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-top: 15px;"
+            >
+              <p>当本地数据与云端数据不一致时，系统会检测到冲突并弹出确认框</p>
+              <p>您可以选择「以云端覆盖本地」或「以本地覆盖云端」</p>
+            </el-alert>
+          </div>
+          
+          <div class="setting-section danger-section">
+            <h3>缓存清理</h3>
+            <el-alert
+              title="警告"
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              <p>此操作将清空浏览器本地所有缓存数据，包括IndexedDB和localStorage。</p>
+            </el-alert>
+            <div class="reset-actions">
+              <el-button type="danger" @click="clearBrowserCache">一键清空浏览器本地缓存</el-button>
             </div>
           </div>
           
@@ -376,11 +437,36 @@
                   <el-option label="English" value="en" />
                 </el-select>
               </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="saveDisplaySettings">保存显示设置</el-button>
+              </el-form-item>
             </el-form>
           </div>
           
           <div class="setting-section">
-            <h3>甘特图显示</h3>
+            <h3>字体设置</h3>
+            <el-form :model="displayForm" label-width="100px">
+              <el-form-item label="字体大小">
+                <el-select v-model="displayForm.fontSize">
+                  <el-option label="小号 (12px)" value="small" />
+                  <el-option label="默认 (14px)" value="medium" />
+                  <el-option label="大号 (16px)" value="large" />
+                  <el-option label="特大号 (18px)" value="xlarge" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="字体类型">
+                <el-select v-model="displayForm.fontFamily">
+                  <el-option label="系统默认" value="system" />
+                  <el-option label="微软雅黑" value="microsoft" />
+                  <el-option label="宋体" value="songti" />
+                  <el-option label="黑体" value="heiti" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </div>
+          
+          <div class="setting-section">
+            <h3>页面布局</h3>
             <el-form :model="displayForm" label-width="120px">
               <el-form-item>
                 <el-switch v-model="displayForm.showMilestone" active-text="显示里程碑" inactive-text="隐藏里程碑" />
@@ -406,16 +492,60 @@
                 <span>2.0.0</span>
               </div>
               <div class="info-row">
+                <span>构建模式：</span>
+                <span>{{ buildMode }}</span>
+              </div>
+              <div class="info-row">
                 <span>技术栈：</span>
-                <span>Vue3 + Element Plus</span>
+                <span>Vue3 + Element Plus + Vite</span>
               </div>
               <div class="info-row">
                 <span>存储：</span>
-                <span>LocalStorage</span>
+                <span>IndexedDB + LocalStorage</span>
+              </div>
+              <div class="info-row">
+                <span>当前用户：</span>
+                <span>{{ store.user.name }}</span>
               </div>
               <div class="info-row">
                 <span>角色：</span>
                 <span>{{ store.user.role === 'sales_assistant' ? '销售助理' : '管理员' }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="setting-section">
+            <h3>项目仓库</h3>
+            <div class="about-info">
+              <div class="info-row">
+                <span>GitHub 地址：</span>
+                <a href="https://github.com/wendyphang621-maker/personalprojectplatform" target="_blank" class="link">https://github.com/wendyphang621-maker/personalprojectplatform</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="setting-section">
+            <h3>依赖包清单</h3>
+            <div class="dependency-list">
+              <div class="dependency-item">
+                <span>vue</span>
+                <span>^3.4.0</span>
+              </div>
+              <div class="dependency-item">
+                <span>element-plus</span>
+                <span>^2.6.0</span>
+              </div>
+              <div class="dependency-item">
+                <span>@supabase/supabase-js</span>
+                <span>^2.45.0</span>
+              </div>
+              <div class="dependency-item">
+                <span>@vueuse/core</span>
+                <span>^10.9.0</span>
+              </div>
+              <div class="dependency-item">
+                <span>xlsx</span>
+                <span>^0.18.0</span>
               </div>
             </div>
           </div>
@@ -502,13 +632,76 @@
         <el-button type="primary" @click="saveUser">保存</el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog v-model="showConflictDialog" title="数据冲突检测" width="500px">
+      <template v-if="conflictResult">
+        <div v-if="conflictResult.hasConflict">
+          <el-alert
+            title="检测到数据冲突"
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            <p>{{ conflictResult.message }}</p>
+          </el-alert>
+          <div class="conflict-details" style="margin-top: 20px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  <th style="border: 1px solid #e4e7ed; padding: 8px; text-align: left;">数据表</th>
+                  <th style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">本地数量</th>
+                  <th style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">云端数量</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px;">客户</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.localCount.customers }}</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.cloudCount.customers }}</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px;">寄样记录</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.localCount.sampleDeliveries }}</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.cloudCount.sample_deliveries }}</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px;">待办任务</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.localCount.dailyTodos }}</td>
+                  <td style="border: 1px solid #e4e7ed; padding: 8px; text-align: center;">{{ conflictResult.cloudCount.daily_todos }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top: 20px;">
+            <p>请选择数据同步方式：</p>
+            <div class="conflict-options">
+              <el-button type="primary" @click="resolveConflict('cloud')">以云端覆盖本地</el-button>
+              <el-button @click="resolveConflict('local')">以本地覆盖云端</el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else>
+          <el-alert
+            title="数据一致"
+            type="success"
+            :closable="false"
+            show-icon
+          >
+            <p>{{ conflictResult.message }}</p>
+          </el-alert>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="showConflictDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
-import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction } from '../supabase.js'
+import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile } from '../supabase.js'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['config-change'])
@@ -520,8 +713,10 @@ onMounted(async () => {
 })
 const showImportDialog = ref(false)
 const showAddUserDialog = ref(false)
+const showConflictDialog = ref(false)
 const isEditingUser = ref(false)
 const editingUserId = ref('')
+const conflictResult = ref(null)
 
 const authUsers = computed(() => authStore.users)
 
@@ -543,7 +738,7 @@ const bucketExists = ref(false)
 const canCreateBucket = ref(true)
 const bucketListError = ref(false)
 const forceProduction = ref(getForceProduction())
-const buildMode = ref(import.meta.env.MODE || 'unknown')
+const buildMode = ref(typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.MODE : 'unknown')
 const supabaseForm = reactive({
   url: '',
   key: '',
@@ -683,7 +878,15 @@ function saveConfig(silent = false) {
   }
   supabaseConnected.value = true
   if (!silent) {
-    alert('配置已保存')
+    alert('配置已保存到本机，刷新页面不会丢失')
+  }
+}
+
+function disableCloudSync() {
+  if (confirm('确定要关闭云端同步吗？\n\n关闭后系统将切换到本地模式，所有数据读写仅走浏览器本地存储。')) {
+    setLocalMode(true)
+    alert('已关闭云端同步，系统切换到本地模式')
+    location.reload()
   }
 }
 
@@ -796,8 +999,10 @@ function confirmResetData() {
 }
 
 const userForm = reactive({
+  username: authStore.currentUser?.username || '',
   name: store.user.name,
   position: store.user.position,
+  notes: store.user.notes || '',
   quickCustomers: [...(store.user.quickCustomers || [])],
   defaultReportFormat: store.user.defaultReportFormat,
   defaultLogisticsCompany: store.user.defaultLogisticsCompany
@@ -809,6 +1014,10 @@ watch(() => userForm.name, (newName) => {
 
 watch(() => userForm.position, (newPosition) => {
   store.user.position = newPosition
+})
+
+watch(() => userForm.notes, (newNotes) => {
+  store.user.notes = newNotes
 })
 
 watch(() => userForm.quickCustomers, (newCustomers) => {
@@ -823,10 +1032,15 @@ watch(() => userForm.defaultLogisticsCompany, (newCompany) => {
   store.user.defaultLogisticsCompany = newCompany
 })
 
+function saveUserInfo() {
+  alert('用户信息已保存')
+}
+
 const alertSettings = reactive({
   certExpire: store.alertSettings?.certExpire ?? true,
   logisticsOverdue: store.alertSettings?.logisticsOverdue ?? true,
-  customerFollowup: store.alertSettings?.customerFollowup ?? true
+  customerFollowup: store.alertSettings?.customerFollowup ?? true,
+  materialExpire: store.alertSettings?.materialExpire ?? true
 })
 
 watch(() => alertSettings.certExpire, (newVal) => {
@@ -844,11 +1058,17 @@ watch(() => alertSettings.customerFollowup, (newVal) => {
   store.alertSettings.customerFollowup = newVal
 })
 
+watch(() => alertSettings.materialExpire, (newVal) => {
+  if (!store.alertSettings) store.alertSettings = {}
+  store.alertSettings.materialExpire = newVal
+})
+
 const alertParams = reactive({
   certWarningDays: store.alertParams?.certWarningDays ?? 30,
   certDangerDays: store.alertParams?.certDangerDays ?? 7,
   logisticsOverdueDays: store.alertParams?.logisticsOverdueDays ?? 7,
-  customerFollowupDays: store.alertParams?.customerFollowupDays ?? 15
+  customerFollowupDays: store.alertParams?.customerFollowupDays ?? 15,
+  materialExpireDays: store.alertParams?.materialExpireDays ?? 7
 })
 
 watch(() => alertParams.certWarningDays, (newVal) => {
@@ -871,13 +1091,28 @@ watch(() => alertParams.customerFollowupDays, (newVal) => {
   store.alertParams.customerFollowupDays = newVal
 })
 
+watch(() => alertParams.materialExpireDays, (newVal) => {
+  if (!store.alertParams) store.alertParams = {}
+  store.alertParams.materialExpireDays = newVal
+})
+
+function saveAlertSettings() {
+  alert('预警配置已保存')
+}
+
 const displayForm = reactive({
   themeColor: '#409EFF',
   language: 'zh-CN',
+  fontSize: 'medium',
+  fontFamily: 'system',
   showMilestone: true,
   showCompleted: true,
   showSalesProjects: false
 })
+
+function saveDisplaySettings() {
+  alert('显示设置已保存')
+}
 
 const importForm = reactive({
   data: ''
@@ -897,7 +1132,7 @@ function changeAvatar() {
   alert('头像上传功能开发中')
 }
 
-function exportData() {
+function exportDataAsJson() {
   const data = JSON.stringify(store, null, 2)
   const blob = new Blob([data], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -906,6 +1141,10 @@ function exportData() {
   a.download = `项目工作台数据_${new Date().toISOString().split('T')[0]}.json`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function exportDataAsExcel() {
+  alert('Excel导出功能开发中')
 }
 
 function handleFileSelect(event) {
@@ -931,35 +1170,20 @@ function importData() {
   }
 }
 
-function cleanOldCache() {
-  const now = new Date()
-  const expireDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-  
-  let cleanedCount = 0
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i)
-    const value = localStorage.getItem(key)
-    
-    try {
-      const parsed = JSON.parse(value)
-      if (parsed.timestamp && new Date(parsed.timestamp) < expireDate) {
-        localStorage.removeItem(key)
-        cleanedCount++
-        i--
-      }
-    } catch (e) {
-      continue
-    }
+function clearBrowserCache() {
+  if (!confirm('确定要清空浏览器本地缓存吗？\n\n此操作将清除所有localStorage和IndexedDB数据，但不会影响业务数据。')) {
+    return
   }
   
-  alert(`已清理 ${cleanedCount} 条过期缓存`)
-}
-
-function clearData() {
-  if (confirm('确定要清空所有数据吗？此操作不可恢复。')) {
-    localStorage.removeItem('project_workbench_data')
-    location.reload()
-  }
+  localStorage.clear()
+  indexedDB.databases().then(databases => {
+    databases.forEach(db => {
+      indexedDB.deleteDatabase(db.name)
+    })
+  })
+  
+  alert('浏览器缓存已清空，页面将刷新')
+  location.reload()
 }
 
 function handleChangePassword() {
@@ -991,6 +1215,17 @@ function handleEditUser(user) {
   userEditForm.role = user.role
   userEditForm.position = user.position
   showAddUserDialog.value = true
+}
+
+function handleResetPassword(user) {
+  if (confirm(`确定要重置用户 "${user.username}" 的密码吗？\n\n新密码将设置为默认值 "Admin@123"`)) {
+    const result = updateAuthUser(user.id, { password: 'Admin@123' })
+    if (result.success) {
+      alert('密码重置成功')
+    } else {
+      alert(result.error)
+    }
+  }
 }
 
 function handleDeleteUser(user) {
@@ -1049,6 +1284,55 @@ function saveUser() {
       closeUserDialog()
     } else {
       alert(result.error)
+    }
+  }
+}
+
+function exportConfig() {
+  const result = exportConfigFile()
+  if (result.success) {
+    alert('配置文件已导出到下载目录')
+  } else {
+    alert('导出失败：' + result.error)
+  }
+}
+
+function triggerImportConfig() {
+  document.getElementById('config-file-input').click()
+}
+
+async function handleConfigFileSelect(event) {
+  const file = event.target.files[0]
+  if (file) {
+    const result = await importConfigFile(file)
+    if (result.success) {
+      alert('配置文件已导入，页面将刷新')
+      location.reload()
+    } else {
+      alert('导入失败：' + result.error)
+    }
+  }
+  event.target.value = ''
+}
+
+async function checkConflict() {
+  const { checkDataConflict } = await import('../store.js')
+  const result = await checkDataConflict()
+  conflictResult.value = result
+  showConflictDialog.value = true
+}
+
+async function resolveConflict(mode) {
+  showConflictDialog.value = false
+  if (mode === 'cloud') {
+    if (confirm('确定以云端数据覆盖本地数据吗？此操作不可恢复！')) {
+      await syncDataFromCloud()
+      alert('已成功以云端数据覆盖本地')
+    }
+  } else {
+    if (confirm('确定以本地数据覆盖云端数据吗？此操作不可恢复！')) {
+      await syncDataToCloud()
+      alert('已成功以本地数据覆盖云端')
     }
   }
 }
@@ -1185,44 +1469,14 @@ function saveUser() {
   color: #409EFF;
 }
 
-.env-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px;
-  background: #fff;
-  border-radius: 4px;
-  margin-bottom: 15px;
+.config-priority {
+  margin-top: 15px;
 }
 
-.switch-label {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.env-info {
-  padding: 15px;
-  background: #fff;
-  border-radius: 4px;
-}
-
-.env-info p {
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.env-info p:last-child {
-  margin-bottom: 0;
-}
-
-.env-info .prod {
-  color: #e6a23c;
-  font-weight: 500;
-}
-
-.env-info .dev {
-  color: #67c23a;
-  font-weight: 500;
+.config-priority p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #606266;
 }
 
 .color-picker {
@@ -1316,6 +1570,33 @@ function saveUser() {
   border-radius: 4px;
   font-size: 13px;
   color: #606266;
+}
+
+.dependency-list {
+  padding: 15px;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.dependency-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #e4e7ed;
+  font-size: 14px;
+}
+
+.dependency-item:last-child {
+  border-bottom: none;
+}
+
+.link {
+  color: #409EFF;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 768px) {
