@@ -1,0 +1,107 @@
+项目工作台 - GitHub 上传指南
+==============================================
+
+一、前置准备
+==============================================
+
+1. 注册 GitHub 账号：https://github.com/
+2. 安装 Git：https://git-scm.com/
+
+二、创建仓库
+==============================================
+
+1. 登录 GitHub
+2. 点击右上角 "+" → "New repository"
+3. 填写仓库信息：
+   - Repository name: project-workbench（或其他名称）
+   - Description: 项目工作台 - 客户管理、订单管理、彩盒样机跟进
+   - Public / Private: 根据需要选择
+   - 不要勾选 "Initialize this repository with a README"
+
+三、本地配置
+==============================================
+
+打开命令提示符（CMD），执行以下命令：
+
+1. 初始化 Git 仓库：
+cd E:\项目管理
+git init
+
+2. 配置用户名和邮箱：
+git config user.name "你的用户名"
+git config user.email "你的邮箱"
+
+3. 添加所有文件：
+git add .
+
+4. 查看状态确认（可选）：
+git status
+
+5. 提交更改：
+git commit -m "项目工作台完整代码"
+
+四、关联远程仓库并推送
+==============================================
+
+1. 添加远程仓库（替换为你的仓库地址）：
+git remote add origin https://github.com/你的用户名/你的仓库名.git
+
+2. 推送代码：
+git push -u origin main
+
+五、常见问题
+==============================================
+
+问题1：推送时提示认证失败
+原因：需要登录认证
+解决方案：
+- 使用 GitHub CLI 登录：gh auth login
+- 或使用 Personal Access Token：
+  1. GitHub → Settings → Developer settings → Personal access tokens
+  2. 生成 token（勾选 repo 权限）
+  3. 推送时使用 token 作为密码
+
+问题2：文件太大无法推送
+原因：上传了 node_modules 或 dist
+解决方案：
+确保 .gitignore 文件包含以下内容：
+node_modules/
+dist/
+然后执行：
+git rm -r --cached node_modules
+git rm -r --cached dist
+git commit -m "移除大文件"
+git push
+
+问题3：权限被拒绝
+原因：仓库权限问题
+解决方案：
+检查仓库是否为私有，确认账号有写入权限
+
+六、上传成功后验证
+==============================================
+
+1. 访问 GitHub 仓库页面确认文件已上传
+2. 克隆到新电脑测试：
+git clone https://github.com/你的用户名/你的仓库名.git
+cd 你的仓库名
+npm install
+npm run dev
+
+七、后续维护
+==============================================
+
+1. 开发完成后提交：
+git add .
+git commit -m "描述更改内容"
+git push
+
+2. 更新依赖后提交：
+npm install xxx
+git add package.json package-lock.json
+git commit -m "更新依赖"
+git push
+
+==============================================
+版本：v1.0.0
+日期：2026-07-27

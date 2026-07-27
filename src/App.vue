@@ -1,0 +1,962 @@
+<template>
+  <div v-if="!isLoggedIn" class="login-wrapper">
+    <LoginPage @login-success="handleLoginSuccess" />
+  </div>
+  
+  <div v-else class="app-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="9" x2="15" y2="9"/>
+            <line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+          <span>项目工作台</span>
+        </div>
+      </div>
+      <nav class="nav-menu">
+        <div 
+          v-for="item in fixedNavItems" 
+          :key="item.key"
+          class="nav-item"
+          :class="{ active: currentPage === item.key }"
+          @click="handleNavClick(item.key)"
+        >
+          <component :is="item.icon" />
+          <span>{{ item.label }}</span>
+        </div>
+        
+        <div class="nav-divider"></div>
+        
+        <div class="nav-group">
+          <div 
+            class="nav-group-header"
+            @click="expandedGroups['development'] = !expandedGroups['development']"
+          >
+            <svg 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              stroke-width="2" 
+              width="16" 
+              height="16"
+              class="group-icon"
+              :class="{ rotated: expandedGroups['development'] }"
+            >
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>研发项目归档</span>
+          </div>
+          <div v-if="expandedGroups['development']" class="nav-group-items">
+            <div 
+              v-for="item in developmentNavItems" 
+              :key="item.key"
+              class="nav-item sub-item"
+              :class="{ active: currentPage === item.key }"
+              @click="handleNavClick(item.key)"
+            >
+              <component :is="item.icon" />
+              <span>{{ item.label }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="nav-divider"></div>
+        
+        <div v-for="group in salesNavGroups" :key="group.key" class="nav-group">
+          <div 
+            class="nav-group-header"
+            @click="handleGroupClick(group)"
+          >
+            <svg 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              stroke-width="2" 
+              width="16" 
+              height="16"
+              class="group-icon"
+              :class="{ rotated: expandedGroups[group.key] }"
+            >
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>{{ group.label }}</span>
+          </div>
+          <div v-if="expandedGroups[group.key]" class="nav-group-items">
+            <div 
+              v-for="item in group.children" 
+              :key="item.key"
+              class="nav-item sub-item"
+              :class="{ active: currentPage === item.key && currentSubPage === item.subKey }"
+              @click="handleSalesNavClick(group.key, item.key, item.subKey)"
+            >
+              <component :is="item.icon" />
+              <span>{{ item.label }}</span>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="user-detail">
+            <span class="user-name">{{ store.user.name }}</span>
+            <span class="user-role">{{ store.user.position }}</span>
+          </div>
+        </div>
+        <div class="local-mode-switch">
+          <span>本地模式</span>
+          <el-switch v-model="store.localMode" active-text="开" inactive-text="关" />
+        </div>
+        <div class="logout-btn" @click="handleLogout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>退出登录</span>
+        </div>
+      </div>
+    </aside>
+    
+    <main class="main-content">
+      <header class="top-toolbar" v-if="isProjectPage">
+        <div class="toolbar-left">
+          <el-button type="primary" @click="showNewProjectDialog = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            新建项目
+          </el-button>
+          <el-button @click="saveData">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            保存
+          </el-button>
+          <el-button @click="showImportDialog = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            导入任务
+          </el-button>
+          <el-button @click="exportTemplate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            导出模板
+          </el-button>
+        </div>
+        <div class="toolbar-right">
+          <el-select v-model="viewMode" class="view-select">
+            <el-option label="甘特图" value="gantt" />
+            <el-option label="表格" value="table" />
+            <el-option label="日视图" value="day" />
+            <el-option label="周视图" value="week" />
+            <el-option label="月视图" value="month" />
+          </el-select>
+          <el-button @click="showAIDialog = true" type="success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            AI智能拆解
+          </el-button>
+        </div>
+      </header>
+      
+      <div class="page-content">
+        <Workbench v-if="currentPage === 'workbench'" @navigate="handleNavClick" />
+        <CalendarView v-else-if="currentPage === 'calendar'" />
+        <FileLibrary v-else-if="currentPage === 'files'" />
+        <ReportCenter v-else-if="currentPage === 'report'" />
+        <Settings v-else-if="currentPage === 'settings'" ref="settingsRef" @config-change="handleConfigChange" />
+        
+        <ProjectSpace v-else-if="currentPage === 'project'" :readOnly="isReadOnly('project')" @openAddTask="openAddTaskDialog" />
+        <DailyTodo v-else-if="currentPage === 'todo'" :readOnly="isReadOnly('todo')" />
+        <MilestoneView v-else-if="currentPage === 'milestone'" :readOnly="isReadOnly('milestone')" />
+        <ActivityLog v-else-if="currentPage === 'activity'" :readOnly="isReadOnly('activity')" />
+        
+        <CustomerManagement v-else-if="currentPage === 'customer'" />
+        <OrderManagement v-else-if="currentPage === 'order'" />
+        <ProductManagement v-else-if="currentPage === 'product'" />
+        <DailyWork v-else-if="currentPage === 'dailywork'" />
+        <FinanceManagement v-else-if="currentPage === 'finance'" />
+      </div>
+    </main>
+    
+    <el-dialog v-model="showNewProjectDialog" title="新建项目" width="400px">
+      <el-form :model="newProject" label-width="80px">
+        <el-form-item label="项目名称">
+          <el-input v-model="newProject.name" />
+        </el-form-item>
+        <el-form-item label="项目描述">
+          <el-input v-model="newProject.description" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="项目类型">
+          <el-select v-model="newProject.projectType">
+            <el-option label="研发项目" value="development" />
+            <el-option label="客户样机项目" value="sample" />
+            <el-option label="产品认证项目" value="certification" />
+            <el-option label="批量出货订单" value="shipment" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showNewProjectDialog = false">取消</el-button>
+        <el-button type="primary" @click="createProject">确定</el-button>
+      </template>
+    </el-dialog>
+    
+    <el-dialog v-model="showImportDialog" title="导入任务" width="500px">
+      <el-form :model="importForm" label-width="80px">
+        <el-form-item label="选择项目">
+          <el-select v-model="importForm.projectId">
+            <el-option v-for="p in store.projects" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="任务列表">
+          <el-input v-model="importForm.tasks" type="textarea" :rows="10" placeholder="每行一个任务，格式：任务名称 开始日期 工期(天)" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showImportDialog = false">取消</el-button>
+        <el-button type="primary" @click="importTasks">导入</el-button>
+      </template>
+    </el-dialog>
+    
+    <el-dialog v-model="showAIDialog" title="AI智能任务拆解" width="600px">
+      <el-form :model="aiForm" label-width="80px">
+        <el-form-item label="选择项目">
+          <el-select v-model="aiForm.projectId">
+            <el-option v-for="p in store.projects" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="输入文本">
+          <el-input v-model="aiForm.text" type="textarea" :rows="12" placeholder="粘贴微信聊天记录、会议纪要或领导指令..." />
+        </el-form-item>
+        <div class="ai-tips">
+          <div class="tip-item">支持识别日期格式：2024-03-20</div>
+          <div class="tip-item">支持识别工期：5天、3日</div>
+          <div class="tip-item">包含"里程碑"标记为里程碑任务</div>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAIDialog = false">取消</el-button>
+        <el-button type="success" @click="aiParse">智能拆解</el-button>
+      </template>
+    </el-dialog>
+    
+    <el-dialog v-model="showAddTaskDialog" title="新建任务" width="500px">
+      <el-form :model="newTask" label-width="100px">
+        <el-form-item label="任务名称">
+          <el-input v-model="newTask.name" />
+        </el-form-item>
+        <el-form-item label="工期(天)">
+          <el-input-number v-model="newTask.duration" :min="1" :max="365" />
+        </el-form-item>
+        <el-form-item label="开始日期">
+          <el-date-picker v-model="newTask.startDate" type="date" />
+        </el-form-item>
+        <el-form-item label="关联客户">
+          <el-select v-model="newTask.customerName">
+            <el-option label="请选择" value="" />
+            <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="产品机型">
+          <el-select v-model="newTask.model">
+            <el-option label="请选择" value="" />
+            <el-option v-for="m in store.productModels" :key="m.id" :label="m.name" :value="m.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="物流单号">
+          <el-input v-model="newTask.logisticsNo" />
+        </el-form-item>
+        <el-form-item label="对接邮箱">
+          <el-input v-model="newTask.email" />
+        </el-form-item>
+        <el-form-item label="样品数量">
+          <el-input-number v-model="newTask.sampleQty" :min="0" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="newTask.milestone">设为里程碑</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAddTaskDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmAddTask">确定</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, h, computed, onMounted } from 'vue'
+import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase } from './store.js'
+
+let pendingNavKey = null
+let pendingSubKey = null
+import LoginPage from './components/LoginPage.vue'
+import Workbench from './components/Workbench.vue'
+import CalendarView from './components/CalendarView.vue'
+import FileLibrary from './components/FileLibrary.vue'
+import ReportCenter from './components/ReportCenter.vue'
+import Settings from './components/Settings.vue'
+import ProjectSpace from './components/ProjectSpace.vue'
+import DailyTodo from './components/DailyTodo.vue'
+import MilestoneView from './components/MilestoneView.vue'
+import ActivityLog from './components/ActivityLog.vue'
+import CustomerManagement from './components/CustomerManagement.vue'
+import OrderManagement from './components/OrderManagement.vue'
+import ProductManagement from './components/ProductManagement.vue'
+import DailyWork from './components/DailyWork.vue'
+import FinanceManagement from './components/FinanceManagement.vue'
+
+const isLoggedIn = computed(() => !!authStore.currentUser)
+
+onMounted(async () => {
+  if (isLoggedIn.value) {
+    await syncAllFromSupabase()
+  }
+})
+
+const currentPage = ref('workbench')
+const currentSubPage = ref('')
+const viewMode = ref('gantt')
+
+const expandedGroups = reactive({
+  development: false,
+  customer: true,
+  order: true,
+  product: true,
+  dailywork: true,
+  finance: true
+})
+
+const showNewProjectDialog = ref(false)
+const showImportDialog = ref(false)
+const showAIDialog = ref(false)
+const showAddTaskDialog = ref(false)
+const settingsRef = ref(null)
+
+function handleConfigChange(changed) {
+  hasUnsavedConfig.value = changed
+}
+
+const newProject = reactive({ name: '', description: '', projectType: 'development' })
+const importForm = reactive({ projectId: '', tasks: '' })
+const aiForm = reactive({ projectId: '', text: '' })
+const newTask = reactive({ 
+  name: '', 
+  duration: 1, 
+  startDate: new Date().toISOString().split('T')[0], 
+  milestone: false,
+  customerName: '',
+  model: '',
+  logisticsNo: '',
+  email: '',
+  sampleQty: 0
+})
+
+let pendingStageId = null
+
+const fixedNavItems = [
+  { key: 'workbench', label: '工作台', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' })) },
+  { key: 'calendar', label: '日历', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('rect', { x: '3', y: '4', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '16', y1: '2', x2: '16', y2: '6' }), h('line', { x1: '8', y1: '2', x2: '8', y2: '6' }), h('line', { x1: '3', y1: '10', x2: '21', y2: '10' })) },
+  { key: 'files', label: '文件资料', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' }), h('line', { x1: '16', y1: '13', x2: '8', y2: '13' }), h('line', { x1: '16', y1: '17', x2: '8', y2: '17' }), h('polyline', { points: '10 9 9 9 8 9' })) },
+  { key: 'report', label: '报表中心', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('line', { x1: '18', y1: '20', x2: '18', y2: '10' }), h('line', { x1: '12', y1: '20', x2: '12', y2: '4' }), h('line', { x1: '6', y1: '20', x2: '6', y2: '14' })) },
+  { key: 'settings', label: '设置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('circle', { cx: '12', cy: '12', r: '3' }), h('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })) }
+]
+
+const developmentNavItems = [
+  { key: 'project', label: '项目管理', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('path', { d: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z' })) },
+  { key: 'todo', label: '任务管理', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('polyline', { points: '20 6 9 17 4 12' })) },
+  { key: 'milestone', label: '里程碑', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('polygon', { points: '12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2' })) },
+  { key: 'activity', label: '项目动态', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('path', { d: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z' }), h('polyline', { points: '14 2 14 8 20 8' })) }
+]
+
+const salesNavGroups = [
+  {
+    key: 'customer',
+    label: '客户线索管理',
+    children: [
+      { key: 'customer', subKey: 'main', label: '海外客户主台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }), h('circle', { cx: '12', cy: '7', r: '4' })) },
+      { key: 'customer', subKey: 'followup', label: '客户跟进记录', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) },
+      { key: 'customer', subKey: 'sample', label: '样机寄样申请', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }), h('circle', { cx: '12', cy: '10', r: '3' })) },
+      { key: 'customer', subKey: 'group', label: '客户分组配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) }
+    ]
+  },
+  {
+    key: 'order',
+    label: '订单出货管理',
+    children: [
+      { key: 'order', subKey: 'main', label: '订单总台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' })) },
+      { key: 'order', subKey: 'logistics', label: '物流运单跟踪', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 7h-9M14 17H5M17 17h2M17 7h2M7 17H5M7 7H5M20 14h-9' })) },
+      { key: 'order', subKey: 'bill', label: '物流费用对账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '12', y1: '1', x2: '12', y2: '23' }), h('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })) },
+      { key: 'order', subKey: 'imei', label: 'IMEI出库核对', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' })) }
+    ]
+  },
+  {
+    key: 'product',
+    label: '产品资料台账',
+    children: [
+      { key: 'product', subKey: 'model', label: '机型参数库', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '5', y: '2', width: '14', height: '20', rx: '2', ry: '2' }), h('line', { x1: '12', y1: '18', x2: '12', y2: '12' }), h('line', { x1: '12', y1: '8', x2: '12.01', y2: '8' })) },
+      { key: 'product', subKey: 'cert', label: '合规认证档案', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M12 2L2 7l10 5 10-5-10-5z' }), h('path', { d: 'M2 17l10 5 10-5' }), h('path', { d: 'M2 12l10 5 10-5' })) },
+      { key: 'product', subKey: 'material', label: '渲染图素材库', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('circle', { cx: '8.5', cy: '8.5', r: '1.5' }), h('polyline', { points: '21 15 16 10 5 21' })) },
+      { key: 'product', subKey: 'supplier', label: '供应商台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('polyline', { points: '23 21 17 11 12 16 7 11 1 21' })) }
+    ]
+  },
+  {
+    key: 'dailywork',
+    label: '每日工作台账',
+    children: [
+      { key: 'dailywork', subKey: 'todo', label: '当日待办看板', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('polyline', { points: '20 6 9 17 4 12' })) },
+      { key: 'dailywork', subKey: 'report', label: '周报自动生成', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '18', y1: '20', x2: '18', y2: '10' }), h('line', { x1: '12', y1: '20', x2: '12', y2: '4' }), h('line', { x1: '6', y1: '20', x2: '6', y2: '14' })) },
+      { key: 'dailywork', subKey: 'map', label: '客户线索采集', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('polygon', { points: '1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6' })) },
+      { key: 'dailywork', subKey: 'letter', label: '开发信存档库', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z' }), h('polyline', { points: '22,6 12,13 2,6' })) }
+    ]
+  },
+  {
+    key: 'finance',
+    label: '财务辅助对账',
+    children: [
+      { key: 'finance', subKey: 'freight', label: '样品运费登记', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '12', y1: '1', x2: '12', y2: '23' }), h('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })) },
+      { key: 'finance', subKey: 'quotation', label: '报价单存档', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' }), h('line', { x1: '16', y1: '13', x2: '8', y2: '13' })) },
+      { key: 'finance', subKey: 'summary', label: '月度运费汇总', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' }), h('line', { x1: '9', y1: '12', x2: '15', y2: '12' })) }
+    ]
+  }
+]
+
+const hasUnsavedConfig = ref(false)
+
+function handleNavClick(key) {
+  if (hasUnsavedConfig.value && currentPage.value === 'settings') {
+    const confirmLeave = confirm('当前存储配置未保存，是否保存后再切换页面？')
+    if (!confirmLeave) return
+  }
+  currentPage.value = key
+  currentSubPage.value = ''
+}
+
+function handleGroupClick(group) {
+  if (hasUnsavedConfig.value && currentPage.value === 'settings') {
+    const confirmLeave = confirm('当前存储配置未保存，是否保存后再切换页面？')
+    if (!confirmLeave) return
+  }
+  expandedGroups[group.key] = !expandedGroups[group.key]
+  if (group.children && group.children.length > 0) {
+    const firstChild = group.children[0]
+    currentPage.value = firstChild.key
+    currentSubPage.value = firstChild.subKey
+  }
+}
+
+function handleSalesNavClick(groupKey, pageKey, subKey) {
+  if (hasUnsavedConfig.value && currentPage.value === 'settings') {
+    const confirmLeave = confirm('当前存储配置未保存，是否保存后再切换页面？')
+    if (!confirmLeave) return
+  }
+  currentPage.value = pageKey
+  currentSubPage.value = subKey
+}
+
+const isProjectPage = computed(() => {
+  return ['project', 'todo', 'milestone', 'activity'].includes(currentPage.value)
+})
+
+function createProject() {
+  if (newProject.name.trim()) {
+    addProject(newProject.name.trim(), newProject.description.trim(), newProject.projectType)
+    newProject.name = ''
+    newProject.description = ''
+    newProject.projectType = 'development'
+    showNewProjectDialog.value = false
+  }
+}
+
+function saveData() {
+  localStorage.setItem('project_workbench_data', JSON.stringify(store))
+  alert('数据已保存')
+}
+
+function importTasks() {
+  if (!importForm.projectId || !importForm.tasks.trim()) return
+  const lines = importForm.tasks.split('\n').filter(l => l.trim())
+  const projectStages = store.stages.filter(s => s.projectId === importForm.projectId)
+  const defaultStage = projectStages[0]
+  if (!defaultStage) return
+  
+  lines.forEach(line => {
+    const parts = line.trim().split(/\s+/)
+    const name = parts[0]
+    const startDate = parts[1] || new Date().toISOString().split('T')[0]
+    const duration = parseInt(parts[2]) || 1
+    addTask(importForm.projectId, defaultStage.id, name, duration, startDate)
+  })
+  
+  importForm.projectId = ''
+  importForm.tasks = ''
+  showImportDialog.value = false
+  alert('导入成功')
+}
+
+function aiParse() {
+  if (!aiForm.projectId || !aiForm.text.trim()) return
+  const count = parseAIText(aiForm.text, aiForm.projectId)
+  aiForm.text = ''
+  showAIDialog.value = false
+  alert(`成功拆解 ${count} 个任务`)
+}
+
+function exportTemplate() {
+  const template = `任务名称\t开始日期\t工期(天)\t是否里程碑\n任务1\t${new Date().toISOString().split('T')[0]}\t5\t否\n任务2\t${new Date().toISOString().split('T')[0]}\t3\t是`
+  const blob = new Blob([template], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '任务导入模板.txt'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function openAddTaskDialog(stageId) {
+  pendingStageId = stageId
+  showAddTaskDialog.value = true
+}
+
+function confirmAddTask() {
+  if (!newTask.name.trim()) return
+  const stage = store.stages.find(s => s.id === pendingStageId)
+  if (stage) {
+    addTask(stage.projectId, stage.id, newTask.name, newTask.duration, newTask.startDate, newTask.milestone, {
+      customerName: newTask.customerName,
+      model: newTask.model,
+      logisticsNo: newTask.logisticsNo,
+      email: newTask.email,
+      sampleQty: newTask.sampleQty
+    })
+  }
+  newTask.name = ''
+  newTask.duration = 1
+  newTask.startDate = new Date().toISOString().split('T')[0]
+  newTask.milestone = false
+  newTask.customerName = ''
+  newTask.model = ''
+  newTask.logisticsNo = ''
+  newTask.email = ''
+  newTask.sampleQty = 0
+  showAddTaskDialog.value = false
+}
+
+function handleLoginSuccess() {
+  currentPage.value = 'workbench'
+}
+
+function handleLogout() {
+  logout()
+  currentPage.value = 'workbench'
+}
+
+defineExpose({ openAddTaskDialog })
+</script>
+
+<style>
+.login-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  margin-top: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s;
+}
+
+.logout-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:root {
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 32px;
+  
+  --font-base: 14px;
+  --font-sm: 13px;
+  --font-xs: 12px;
+  --font-title: 18px;
+  --font-stat: 26px;
+  
+  --sidebar-width: 240px;
+  --sidebar-gap: 20px;
+  
+  --card-padding: 20px;
+  --card-gap-h: 16px;
+  --card-gap-v: 24px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: var(--font-base);
+  line-height: 1.6;
+  color: #303133;
+  overflow-x: hidden;
+}
+
+.app-container {
+  display: flex;
+  height: 100%;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+.sidebar-header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.logo svg {
+  width: 28px;
+  height: 28px;
+  color: #409EFF;
+}
+
+.nav-menu {
+  flex: 1;
+  padding: var(--spacing-sm) 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.nav-menu::-webkit-scrollbar {
+  width: 4px;
+}
+
+.nav-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nav-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  height: 34px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 15px;
+  line-height: 34px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+  background: rgba(64, 158, 255, 0.25);
+  border-left: 3px solid #409EFF;
+}
+
+.nav-item.sub-item {
+  padding-left: calc(18px + 22px);
+  font-size: 14px;
+}
+
+.nav-item svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.nav-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: var(--spacing-sm) 0;
+}
+
+.nav-group {
+  margin-bottom: 5px;
+}
+
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px;
+  height: 38px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-group-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.group-icon {
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+
+.group-icon.rotated {
+  transform: rotate(180deg);
+}
+
+.nav-group-items {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--spacing-md);
+}
+
+.user-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.user-role {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar svg {
+  width: 20px;
+  height: 20px;
+}
+
+.local-mode-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+  overflow: hidden;
+  margin-left: var(--sidebar-gap);
+}
+
+.top-toolbar {
+  height: 60px;
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-md);
+}
+
+.toolbar-left {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.view-select {
+  width: 120px;
+}
+
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-md);
+  min-width: 0;
+}
+
+.page-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-content::-webkit-scrollbar-track {
+  background: #f5f7fa;
+}
+
+.page-content::-webkit-scrollbar-thumb {
+  background: #dcdfe6;
+  border-radius: 3px;
+}
+
+.ai-tips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.tip-item {
+  font-size: var(--font-xs);
+  color: #909399;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 60px;
+  }
+  .sidebar-header span, .nav-item span, .sidebar-footer span, .nav-group-header span {
+    display: none;
+  }
+  .sidebar-header, .nav-item, .nav-group-header, .sidebar-footer {
+    padding: 10px;
+    justify-content: center;
+  }
+  .nav-item.active {
+    border-left: none;
+    background: rgba(64, 158, 255, 0.3);
+  }
+  .nav-item.sub-item {
+    padding-left: 10px;
+  }
+}
+
+.el-dialog {
+  z-index: 9999 !important;
+}
+
+.el-dialog__wrapper {
+  z-index: 9998 !important;
+}
+
+.el-input__wrapper {
+  box-shadow: none !important;
+  background: #ffffff !important;
+  border: 1px solid #dcdfe6 !important;
+}
+
+.el-input__inner {
+  z-index: 1000 !important;
+  background: #ffffff !important;
+  color: #303133 !important;
+  border: none !important;
+}
+
+.el-select__wrapper {
+  box-shadow: none !important;
+  background: #ffffff !important;
+}
+
+.el-date-editor {
+  z-index: 1000 !important;
+  background: #ffffff !important;
+}
+
+.el-textarea__inner {
+  z-index: 1000 !important;
+  background: #ffffff !important;
+  color: #303133 !important;
+}
+
+.el-form-item__label {
+  z-index: 1000 !important;
+  color: #606266 !important;
+}
+
+.el-form-item__content {
+  z-index: 1000 !important;
+}
+
+.el-button {
+  z-index: 1000 !important;
+}
+
+.el-dialog__body {
+  z-index: 1000 !important;
+}
+
+.el-dialog__header {
+  z-index: 1000 !important;
+}
+</style>

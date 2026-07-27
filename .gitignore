@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.trae/
+.trae-cn/
+.DS_Store
+*.log
+.env.local
+.env.*.local
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+.cache/
+*.localstorage
+*.indexedDB

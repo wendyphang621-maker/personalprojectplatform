@@ -1,0 +1,446 @@
+import ExcelJS from 'exceljs'
+
+export async function exportToExcel(sheetName, headers, data, options = {}) {
+  const workbook = new ExcelJS.Workbook()
+  
+  workbook.creator = '项目工作台'
+  workbook.lastModifiedBy = '项目工作台'
+  workbook.created = new Date()
+  workbook.modified = new Date()
+  
+  const worksheet = workbook.addWorksheet(sheetName)
+  
+  if (options.template === 'quotation') {
+    return exportQuotationTemplate(worksheet, sheetName, data)
+  }
+  
+  if (options.template === 'order') {
+    return exportOrderTemplate(worksheet, sheetName, data)
+  }
+  
+  if (options.template === 'bill') {
+    return exportBillTemplate(worksheet, sheetName, data)
+  }
+  
+  const titleRow = worksheet.addRow([`${sheetName} - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = {
+    name: '微软雅黑',
+    size: 16,
+    bold: true,
+    color: { argb: 'FF1a1a2e' }
+  }
+  titleRow.alignment = { horizontal: 'center' }
+  worksheet.mergeCells(`A1:${getColumnLetter(headers.length)}1`)
+  
+  worksheet.addRow([])
+  
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = {
+    name: '微软雅黑',
+    size: 12,
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  }
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF1a1a2e' }
+  }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+  
+  data.forEach(rowData => {
+    const row = worksheet.addRow(rowData)
+    row.font = {
+      name: '微软雅黑',
+      size: 11
+    }
+    row.alignment = { vertical: 'middle' }
+    row.height = 22
+  })
+  
+  const defaultWidths = [8, 15, 15, 20, 15, 15, 12, 12, 15, 10, 15, 12, 15, 12, 15, 12]
+  
+  headers.forEach((header, index) => {
+    const contentWidths = data.map(row => {
+      const cell = row[index]
+      if (cell === null || cell === undefined) return 0
+      const str = String(cell)
+      let width = str.length
+      if (/[\u4e00-\u9fa5]/.test(str)) {
+        width = width * 1.5
+      }
+      return width
+    })
+    
+    const maxContentWidth = Math.max(...contentWidths, header.length * 1.2)
+    const defaultWidth = defaultWidths[index] || 12
+    
+    worksheet.getColumn(index + 1).width = Math.max(maxContentWidth + 2, defaultWidth)
+    
+    worksheet.getColumn(index + 1).alignment = {
+      horizontal: isNumeric(data.map(r => r[index])) ? 'right' : 'left',
+      vertical: 'middle'
+    }
+  })
+  
+  const range = worksheet.getCell(`A3:${getColumnLetter(headers.length)}${data.length + 2}`)
+  range.border = {
+    top: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    left: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    bottom: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    right: { style: 'thin', color: { argb: 'FFd0d0d0' } }
+  }
+  
+  worksheet.freezePanes = 'A3'
+  
+  worksheet.autoFilter = {
+    from: { row: 2, column: 1 },
+    to: { row: data.length + 2, column: headers.length }
+  }
+  
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportQuotationTemplate(worksheet, sheetName, data) {
+  let rowNum = 1
+  
+  for (let quoteIdx = 0; quoteIdx < data.length; quoteIdx++) {
+    const quote = data[quoteIdx]
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const titleRow = worksheet.addRow(['报价单'])
+    titleRow.font = {
+      name: '微软雅黑',
+      size: 20,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    titleRow.height = 35
+    worksheet.mergeCells(`A${rowNum}:H${rowNum}`)
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const infoRow1 = worksheet.addRow(['报价单编号:', quote.id, '日期:', quote.quoteDate, '', '', '', ''])
+    infoRow1.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow2 = worksheet.addRow(['客户名称:', quote.customerName, '联系人:', '', '', '', '', ''])
+    infoRow2.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow3 = worksheet.addRow(['联系电话:', '', '报价有效期:', quote.validUntil || '30天', '', '', '', ''])
+    infoRow3.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const tableHeaders = worksheet.addRow(['序号', '商品名称', '规格型号', '单位', '数量', '单价', '金额', '备注'])
+    tableHeaders.font = {
+      name: '微软雅黑',
+      size: 11,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    tableHeaders.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    tableHeaders.alignment = { horizontal: 'center', vertical: 'middle' }
+    tableHeaders.height = 25
+    rowNum++
+    
+    const itemRow = worksheet.addRow(['1', quote.product, quote.product, '台', quote.quantity, quote.unitPrice, quote.totalAmount, quote.remark || ''])
+    itemRow.font = { name: '微软雅黑', size: 11 }
+    itemRow.alignment = { vertical: 'middle' }
+    rowNum++
+    
+    for (let i = 0; i < 8; i++) {
+      const emptyRow = worksheet.addRow(['', '', '', '', '', '', '', ''])
+      emptyRow.font = { name: '微软雅黑', size: 11 }
+    }
+    rowNum += 8
+    
+    const totalRow1 = worksheet.addRow(['', '', '', '', '', '合计金额:', quote.totalAmount + ' ' + quote.currency, ''])
+    totalRow1.font = { name: '微软雅黑', size: 11, bold: true }
+    totalRow1.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow1.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
+    const totalRow2 = worksheet.addRow(['', '', '', '', '税率:', '0.13', '税额:', ''])
+    totalRow2.font = { name: '微软雅黑', size: 11, bold: true }
+    totalRow2.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow2.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
+    const totalRow3 = worksheet.addRow(['', '', '', '', '', '报价总价:', quote.totalAmount + ' ' + quote.currency, ''])
+    totalRow3.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFF0000' } }
+    totalRow3.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow3.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
+    if (quoteIdx < data.length - 1) {
+      worksheet.addRow([''])
+      rowNum++
+    }
+  }
+  
+  const widths = [6, 15, 15, 8, 8, 12, 12, 15]
+  widths.forEach((w, i) => {
+    worksheet.getColumn(i + 1).width = w
+    worksheet.getColumn(i + 1).alignment = { vertical: 'middle' }
+  })
+  
+  const buffer = await worksheet.workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportBillTemplate(worksheet, sheetName, data) {
+  const headers = ['对账ID', '关联运单号', '客户姓名', '国家', '货代公司', '运费金额', '付款状态', '核销日期']
+  
+  const titleRow = worksheet.addRow([`${sheetName} - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = {
+    name: '微软雅黑',
+    size: 16,
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  }
+  titleRow.alignment = { horizontal: 'center' }
+  titleRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF333333' }
+  }
+  titleRow.height = 35
+  worksheet.mergeCells('A1:H1')
+  
+  worksheet.addRow([])
+  
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = {
+    name: '微软雅黑',
+    size: 12,
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  }
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF333333' }
+  }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+  
+  data.forEach(bill => {
+    worksheet.addRow([
+      bill.id,
+      bill.logisticsNo,
+      bill.customerName,
+      bill.country,
+      bill.freightForwarder,
+      bill.freightAmount,
+      bill.paymentStatus === 'paid' ? '已付款' : bill.paymentStatus === 'verified' ? '已核销' : '未付款',
+      bill.writeOffDate || ''
+    ])
+  })
+  
+  const widths = [10, 15, 12, 10, 12, 12, 10, 12]
+  widths.forEach((w, i) => {
+    worksheet.getColumn(i + 1).width = w
+    worksheet.getColumn(i + 1).alignment = { vertical: 'middle', horizontal: i === 5 ? 'right' : 'left' }
+  })
+  
+  const buffer = await worksheet.workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportOrderTemplate(worksheet, sheetName, data) {
+  let rowNum = 1
+  
+  for (let orderIdx = 0; orderIdx < data.length; orderIdx++) {
+    const order = data[orderIdx]
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const titleRow = worksheet.addRow(['销售订单'])
+    titleRow.font = {
+      name: '微软雅黑',
+      size: 20,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    titleRow.height = 35
+    worksheet.mergeCells(`A${rowNum}:H${rowNum}`)
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const infoRow1 = worksheet.addRow(['订单编号:', order.id, '日期:', order.bookingDate, '', '', '', ''])
+    infoRow1.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow2 = worksheet.addRow(['客户名称:', order.customerName, '联系人:', '', '', '', '', ''])
+    infoRow2.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow3 = worksheet.addRow(['物流单号:', order.logisticsNo || '', '出货状态:', order.status, '', '', '', ''])
+    infoRow3.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const tableHeaders = worksheet.addRow(['序号', '商品名称', '规格型号', '单位', '数量', '单价', '金额', '备注'])
+    tableHeaders.font = {
+      name: '微软雅黑',
+      size: 11,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    tableHeaders.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    tableHeaders.alignment = { horizontal: 'center', vertical: 'middle' }
+    tableHeaders.height = 25
+    rowNum++
+    
+    const itemRow = worksheet.addRow(['1', order.model, order.model, '台', order.qty, '', order.amount || '', ''])
+    itemRow.font = { name: '微软雅黑', size: 11 }
+    itemRow.alignment = { vertical: 'middle' }
+    rowNum++
+    
+    for (let i = 0; i < 8; i++) {
+      const emptyRow = worksheet.addRow(['', '', '', '', '', '', '', ''])
+      emptyRow.font = { name: '微软雅黑', size: 11 }
+    }
+    rowNum += 8
+    
+    const totalRow1 = worksheet.addRow(['', '', '', '', '', '合计金额:', order.amount || '', ''])
+    totalRow1.font = { name: '微软雅黑', size: 11, bold: true }
+    totalRow1.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow1.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
+    const totalRow2 = worksheet.addRow(['', '', '', '', '尾款状态:', order.balanceSettled ? '已结清' : '未结清', '', ''])
+    totalRow2.font = { name: '微软雅黑', size: 11, bold: true }
+    totalRow2.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow2.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
+    if (orderIdx < data.length - 1) {
+      worksheet.addRow([''])
+      rowNum++
+    }
+  }
+  
+  const widths = [6, 15, 15, 8, 8, 12, 12, 15]
+  widths.forEach((w, i) => {
+    worksheet.getColumn(i + 1).width = w
+    worksheet.getColumn(i + 1).alignment = { vertical: 'middle' }
+  })
+  
+  const buffer = await worksheet.workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function getColumnLetter(index) {
+  let letter = ''
+  let num = index
+  
+  while (num > 0) {
+    num--
+    letter = String.fromCharCode(65 + (num % 26)) + letter
+    num = Math.floor(num / 26)
+  }
+  
+  return letter
+}
+
+function isNumeric(values) {
+  const nonEmptyValues = values.filter(v => v !== null && v !== undefined && v !== '')
+  if (nonEmptyValues.length === 0) return false
+  
+  return nonEmptyValues.every(v => {
+    const num = Number(v)
+    return !isNaN(num) && isFinite(num)
+  })
+}
+
+export function showExportPreview(headers, data, title = '') {
+  const previewData = {
+    title: title || '导出预览',
+    headers,
+    data,
+    totalRows: data.length,
+    totalColumns: headers.length
+  }
+  
+  window.dispatchEvent(new CustomEvent('excel-preview', { detail: previewData }))
+}
