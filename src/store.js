@@ -978,7 +978,13 @@ export async function syncAllFromSupabase(showToast = true) {
   clearOldLocalStorage()
   
   try {
-    const { fetchFromSupabase } = await import('./supabase.js')
+    const { fetchFromSupabase, getSupabase } = await import('./supabase.js')
+    
+    const supabaseClient = await getSupabase()
+    if (!supabaseClient) {
+      console.log('[同步] ⚠️ Supabase 未配置，保留本地默认数据')
+      return { success: false, error: 'Supabase not configured', totalCount: 0, successCount: 0 }
+    }
     
     const tables = [
       { name: 'customers', key: 'customers' },
@@ -1010,8 +1016,7 @@ export async function syncAllFromSupabase(showToast = true) {
         successCount++
         console.log(`[同步] ✅ ${table.key}: ${data.length} 条记录`)
       } else {
-        store[table.key] = []
-        console.log(`[同步] ⚠️ ${table.key}: 无数据或加载失败`)
+        console.log(`[同步] ⚠️ ${table.key}: 无数据或加载失败，保留默认数据`)
       }
     }
     
