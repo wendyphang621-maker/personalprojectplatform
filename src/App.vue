@@ -301,13 +301,45 @@
         <el-button type="primary" @click="confirmAddTask">确定</el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog v-model="showSupabaseConfigDialog" title="连接云端存储" width="500px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <el-alert
+        title="安全说明"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px;"
+      >
+        <p>密钥仅保存在您的浏览器本地，不会上传到服务器或GitHub</p>
+        <p>勾选「记住配置」将加密存储，刷新页面不会丢失</p>
+      </el-alert>
+      <el-form :model="supabaseConfigForm" label-width="120px">
+        <el-form-item label="Supabase URL">
+          <el-input v-model="supabaseConfigForm.url" placeholder="https://你的项目ID.supabase.co" />
+        </el-form-item>
+        <el-form-item label="Supabase Anon KEY">
+          <el-input v-model="supabaseConfigForm.key" type="password" placeholder="你的匿名密钥" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="supabaseConfigForm.remember" :disabled="isIncognito">
+            记住本次配置
+            <span v-if="isIncognito" style="color: #909399; font-size: 12px;">（无痕模式下不可选）</span>
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="handleCancelSupabaseConfig">取消（保持本地模式）</el-button>
+        <el-button type="primary" @click="handleSupabaseConfigSubmit">确认连接</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, h, computed, onMounted } from 'vue'
 import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode } from './store.js'
-import { setLocalMode, getLocalMode } from './supabase.js'
+import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig } from './supabase.js'
+import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
 
 let pendingNavKey = null
 let pendingSubKey = null
@@ -330,6 +362,8 @@ import FinanceManagement from './components/FinanceManagement.vue'
 const isLoggedIn = computed(() => !!authStore.currentUser)
 
 onMounted(async () => {
+  isIncognito.value = isIncognitoMode()
+  
   if (isLoggedIn.value) {
     await syncAllFromSupabase()
   }
@@ -352,7 +386,16 @@ const showNewProjectDialog = ref(false)
 const showImportDialog = ref(false)
 const showAIDialog = ref(false)
 const showAddTaskDialog = ref(false)
+const showSupabaseConfigDialog = ref(false)
 const settingsRef = ref(null)
+
+const supabaseConfigForm = reactive({
+  url: '',
+  key: '',
+  remember: false
+})
+
+const isIncognito = ref(false)
 
 function handleConfigChange(changed) {
   hasUnsavedConfig.value = changed
@@ -567,14 +610,78 @@ function handleLoginSuccess() {
   currentPage.value = 'workbench'
 }
 
-function handleLocalModeChange(enabled) {
-  toggleLocalMode(enabled)
-  setLocalMode(enabled)
+async function handleLocalModeChange(enabled) {
   if (enabled) {
+    toggleLocalMode(true)
+    setLocalMode(true)
+    clearTempConfig()
     alert('已切换到本地模式，所有数据读写仅走浏览器本地存储')
-  } else {
-    alert('已切换到云端模式，默认读写Supabase，IndexedDB做离线兜底')
+    return
   }
+
+  if (isLocalhost()) {
+    toggleLocalMode(false)
+    setLocalMode(false)
+    await syncAllFromSupabase()
+    alert('已切换到云端模式，默认读写Supabase，IndexedDB做离线兜底')
+    return
+  }
+
+  const savedConfig = await getSavedConfig()
+  
+  if (savedConfig && savedConfig.source === 'saved') {
+    const testResult = await testSupabaseConnection(savedConfig.url, savedConfig.key)
+    if (testResult.success) {
+      await saveEncryptedConfig(savedConfig.url, savedConfig.key, true)
+      toggleLocalMode(false)
+      setLocalMode(false)
+      await syncAllFromSupabase()
+      alert('已切换到云端模式，自动使用已保存的配置连接')
+    } else {
+      alert('已保存的配置连接失败，请重新填写')
+      showSupabaseConfigDialog.value = true
+    }
+  } else {
+    showSupabaseConfigDialog.value = true
+  }
+}
+
+async function handleSupabaseConfigSubmit() {
+  const url = supabaseConfigForm.url.trim()
+  const key = supabaseConfigForm.key.trim()
+  
+  if (!url || !key) {
+    alert('请填写完整的Supabase URL和密钥')
+    return
+  }
+  
+  const testResult = await testSupabaseConnection(url, key)
+  
+  if (!testResult.success) {
+    alert('连接失败：' + testResult.error)
+    return
+  }
+  
+  const remember = supabaseConfigForm.remember && !isIncognito.value
+  await saveEncryptedConfig(url, key, remember)
+  
+  showSupabaseConfigDialog.value = false
+  
+  toggleLocalMode(false)
+  setLocalMode(false)
+  await syncAllFromSupabase()
+  
+  if (remember) {
+    alert('配置已保存，下次关闭本地模式将自动连接')
+  } else {
+    alert('配置已生效，页面刷新后需要重新填写')
+  }
+}
+
+function handleCancelSupabaseConfig() {
+  showSupabaseConfigDialog.value = false
+  toggleLocalMode(true)
+  setLocalMode(true)
 }
 
 function handleLogout() {

@@ -1,18 +1,59 @@
 import { sanitizePathSegment, generateMinimalFileName, isPathTooLong, cleanAndValidateFileName } from './utils/common.js'
+import { encrypt, decrypt, isLocalhost, isOnlineDeployment } from './utils/crypto.js'
 
 let supabase = null
 let localConfig = null
+let tempConfig = null
 
 const LOCAL_CONFIG_KEY = 'project_workbench_local_config'
+const ENCRYPTED_CONFIG_KEY = 'project_workbench_encrypted_config'
 const CONFIG_FILE_NAME = 'settings.local.json'
 const CONFIG_DIR_NAME = '.trae'
 
-function loadLocalConfig() {
+async function loadLocalConfig() {
   try {
-    const configStr = localStorage.getItem(LOCAL_CONFIG_KEY)
-    if (configStr) {
-      localConfig = JSON.parse(configStr)
-      console.log('[配置] 从本地存储加载配置成功')
+    if (isLocalhost()) {
+      const configStr = localStorage.getItem(LOCAL_CONFIG_KEY)
+      if (configStr) {
+        localConfig = JSON.parse(configStr)
+      } else {
+        localConfig = {
+          supabase: {
+            SUPABASE_URL: '',
+            SUPABASE_KEY: '',
+            BUCKET_NAME: 'customer_light_files'
+          },
+          app: {
+            localMode: true,
+            themeColor: '#409EFF',
+            language: 'zh-CN'
+          }
+        }
+        await saveLocalConfig()
+      }
+      return
+    }
+
+    const encryptedConfig = localStorage.getItem(ENCRYPTED_CONFIG_KEY)
+    if (encryptedConfig) {
+      try {
+        const decrypted = await decrypt(encryptedConfig)
+        localConfig = JSON.parse(decrypted)
+      } catch (decryptError) {
+        console.warn('[配置] 解密失败，使用默认配置')
+        localConfig = {
+          supabase: {
+            SUPABASE_URL: '',
+            SUPABASE_KEY: '',
+            BUCKET_NAME: 'customer_light_files'
+          },
+          app: {
+            localMode: true,
+            themeColor: '#409EFF',
+            language: 'zh-CN'
+          }
+        }
+      }
     } else {
       localConfig = {
         supabase: {
@@ -26,7 +67,6 @@ function loadLocalConfig() {
           language: 'zh-CN'
         }
       }
-      saveLocalConfig()
     }
   } catch (e) {
     console.error('[配置] 加载本地配置失败:', e)
@@ -42,17 +82,70 @@ function loadLocalConfig() {
         language: 'zh-CN'
       }
     }
-    saveLocalConfig()
   }
 }
 
-function saveLocalConfig() {
+async function saveLocalConfig() {
   try {
-    localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(localConfig))
-    console.log('[配置] 配置已持久化到本地存储')
+    if (isLocalhost()) {
+      localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(localConfig))
+      return
+    }
+
+    const encrypted = await encrypt(JSON.stringify(localConfig))
+    localStorage.setItem(ENCRYPTED_CONFIG_KEY, encrypted)
   } catch (e) {
     console.error('[配置] 保存本地配置失败:', e)
   }
+}
+
+export function setTempConfig(url, key) {
+  tempConfig = { url, key }
+}
+
+export function getTempConfig() {
+  return tempConfig
+}
+
+export function clearTempConfig() {
+  tempConfig = null
+}
+
+export async function saveEncryptedConfig(url, key, remember = false) {
+  if (remember) {
+    if (!localConfig) await loadLocalConfig()
+    localConfig.supabase.SUPABASE_URL = url
+    localConfig.supabase.SUPABASE_KEY = key
+    await saveLocalConfig()
+    tempConfig = null
+  } else {
+    tempConfig = { url, key }
+  }
+}
+
+export async function getSavedConfig() {
+  if (!localConfig) await loadLocalConfig()
+  
+  if (tempConfig && tempConfig.url && tempConfig.key) {
+    return { url: tempConfig.url, key: tempConfig.key, source: 'temp' }
+  }
+  
+  if (localConfig?.supabase?.SUPABASE_URL && localConfig?.supabase?.SUPABASE_KEY) {
+    return { url: localConfig.supabase.SUPABASE_URL, key: localConfig.supabase.SUPABASE_KEY, source: 'saved' }
+  }
+  
+  return null
+}
+
+export async function clearSavedConfig() {
+  localStorage.removeItem(ENCRYPTED_CONFIG_KEY)
+  localStorage.removeItem(LOCAL_CONFIG_KEY)
+  localStorage.removeItem('supabase_url')
+  localStorage.removeItem('supabase_key')
+  localStorage.removeItem('supabase_bucket')
+  localConfig = null
+  tempConfig = null
+  supabase = null
 }
 
 export function exportConfigFile() {
@@ -194,42 +287,60 @@ export function getForceProduction() {
 export async function getSupabase() {
   if (supabase) return supabase
   
-  logEnvironmentInfo()
-  
   let supabaseUrl = ''
   let supabaseKey = ''
   let configSource = ''
   
-  if (shouldForceProduction()) {
-    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
-    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
-    configSource = '线上正式配置(强制)'
-  } else if (isProduction()) {
-    supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
-    supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
-    configSource = '线上正式配置'
+  if (isLocalhost()) {
+    logEnvironmentInfo()
+    
+    if (shouldForceProduction()) {
+      supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
+      supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
+      configSource = '线上正式配置(强制)'
+    } else if (isProduction()) {
+      supabaseUrl = import.meta.env.VITE_PROD_SUPABASE_URL || getLocalConfigValue('supabase.SUPABASE_URL') || ''
+      supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
+      configSource = '线上正式配置'
+    } else {
+      supabaseUrl = getLocalConfigValue('supabase.SUPABASE_URL') || localStorage.getItem('supabase_url') || import.meta.env.VITE_DEV_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || ''
+      supabaseKey = getLocalConfigValue('supabase.SUPABASE_KEY') || localStorage.getItem('supabase_key') || import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+      configSource = getLocalConfigValue('supabase.SUPABASE_URL') ? '本机私有配置' : (localStorage.getItem('supabase_url') ? '用户临时缓存' : '开发环境变量')
+    }
+    
+    console.log(`[Supabase] 配置来源: ${configSource}`)
+    console.log(`[Supabase] URL: ${supabaseUrl ? supabaseUrl : '(未配置)'}`)
+    console.log(`[Supabase] KEY: ${supabaseKey ? '已配置(隐藏)' : '(未配置)'}`)
   } else {
-    supabaseUrl = getLocalConfigValue('supabase.SUPABASE_URL') || localStorage.getItem('supabase_url') || import.meta.env.VITE_DEV_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || ''
-    supabaseKey = getLocalConfigValue('supabase.SUPABASE_KEY') || localStorage.getItem('supabase_key') || import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-    configSource = getLocalConfigValue('supabase.SUPABASE_URL') ? '本机私有配置' : (localStorage.getItem('supabase_url') ? '用户临时缓存' : '开发环境变量')
+    const savedConfig = await getSavedConfig()
+    
+    if (savedConfig) {
+      supabaseUrl = savedConfig.url
+      supabaseKey = savedConfig.key
+      configSource = savedConfig.source === 'temp' ? '临时内存配置' : '加密存储配置'
+    }
   }
   
-  console.log(`[Supabase] 配置来源: ${configSource}`)
-  console.log(`[Supabase] URL: ${supabaseUrl ? supabaseUrl : '(未配置)'}`)
-  console.log(`[Supabase] KEY: ${supabaseKey ? '已配置(隐藏)' : '(未配置)'}`)
-  
   if (!supabaseUrl || !supabaseKey) {
-    console.error('[Supabase] 配置不完整，无法连接，系统自动切换到本地模式')
+    if (isLocalhost()) {
+      console.error('[Supabase] 配置不完整，无法连接，系统自动切换到本地模式')
+    }
     return null
   }
   
   try {
     const { createClient } = await import('@supabase/supabase-js')
     supabase = createClient(supabaseUrl, supabaseKey)
-    console.log('[Supabase] 客户端初始化成功')
+    
+    if (isLocalhost()) {
+      console.log('[Supabase] 客户端初始化成功')
+    }
+    
     return supabase
   } catch (err) {
-    console.error('[Supabase] 客户端初始化失败:', err)
+    if (isLocalhost()) {
+      console.error('[Supabase] 客户端初始化失败:', err)
+    }
     return null
   }
 }

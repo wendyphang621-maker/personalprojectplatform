@@ -56,6 +56,7 @@
             <div class="data-actions" style="margin-top: 15px;">
               <el-button @click="exportConfig">导出配置文件</el-button>
               <el-button @click="triggerImportConfig">导入配置文件</el-button>
+              <el-button type="danger" @click="handleClearCloudConfig">清除云端配置</el-button>
               <input type="file" id="config-file-input" accept=".json" style="display:none" @change="handleConfigFileSelect" />
             </div>
           </div>
@@ -701,7 +702,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
-import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile } from '../supabase.js'
+import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile, clearSavedConfig } from '../supabase.js'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['config-change'])
@@ -939,6 +940,18 @@ function clearConfig() {
     supabaseForm.bucket = ''
     supabaseConnected.value = false
     alert('配置已清除')
+  }
+}
+
+async function handleClearCloudConfig() {
+  if (confirm('确定要清除云端配置吗？\n\n此操作将删除浏览器中保存的所有Supabase密钥，下次关闭本地模式时需要重新填写。')) {
+    await clearSavedConfig()
+    clearSupabaseConfig()
+    supabaseForm.url = ''
+    supabaseForm.key = ''
+    supabaseForm.bucket = ''
+    supabaseConnected.value = false
+    alert('云端配置已清除')
   }
 }
 
