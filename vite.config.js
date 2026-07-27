@@ -4,7 +4,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [vue()],
-  base: '/personalprojectplatform/',
+  base: './',
   server: {
     port: 8080,
     open: true,
