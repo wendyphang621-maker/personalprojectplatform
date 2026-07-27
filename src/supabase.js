@@ -46,7 +46,7 @@ export function getForceProduction() {
   return shouldForceProduction()
 }
 
-async function getSupabase() {
+export async function getSupabase() {
   if (supabase) return supabase
   
   logEnvironmentInfo()
