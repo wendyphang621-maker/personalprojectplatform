@@ -79,11 +79,11 @@ const defaultData = {
   ],
   
   customers: [
-    { id: 'c1', name: 'Hans', group: 'Hans', email: 'hans@example.com', region: 'Germany', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
-    { id: 'c2', name: 'Ethan', group: 'Ethan', email: 'ethan@example.com', region: 'USA', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
-    { id: 'c3', name: 'Jason', group: 'Jason', email: 'jason@example.com', region: 'Canada', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
-    { id: 'c4', name: 'Ralph', group: 'Ralph', email: 'ralph@example.com', region: 'UK', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
-    { id: 'c5', name: 'Mr.Krish', group: 'Mr.Krish', email: 'krish@example.com', region: 'India', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
+    { id: 'c1', name: 'Hans', group: 'Hans', country: '德国', region: '欧洲', company: 'Hans GmbH', email: 'hans@example.com', phone: '+49123456789', address: '柏林', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
+    { id: 'c2', name: 'Ethan', group: 'Ethan', country: '美国', region: '北美洲', company: 'Ethan Inc', email: 'ethan@example.com', phone: '+11234567890', address: '纽约', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
+    { id: 'c3', name: 'Jason', group: 'Jason', country: '加拿大', region: '北美洲', company: 'Jason Co', email: 'jason@example.com', phone: '+12345678901', address: '多伦多', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
+    { id: 'c4', name: 'Ralph', group: 'Ralph', country: '英国', region: '欧洲', company: 'Ralph Ltd', email: 'ralph@example.com', phone: '+44123456789', address: '伦敦', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
+    { id: 'c5', name: 'Mr.Krish', group: 'Mr.Krish', country: '印度', region: '亚洲', company: 'Krish Enterprises', email: 'krish@example.com', phone: '+91123456789', address: '孟买', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
   ],
   
   sampleDeliveries: [
@@ -565,8 +565,12 @@ export async function addCustomer(data) {
     id: data.id || generateId('c'),
     name: data.name || '',
     group: data.group || '',
-    email: data.email || '',
+    country: data.country || '',
     region: data.region || '',
+    company: data.company || '',
+    email: data.email || '',
+    phone: data.phone || '',
+    address: data.address || '',
     model: data.model || '',
     firstContactDate: data.firstContactDate || new Date().toISOString().split('T')[0],
     sampleCount: data.sampleCount || 0,
@@ -582,7 +586,17 @@ export async function addCustomer(data) {
   
   try {
     const { syncToSupabase } = await import('./supabase.js')
-    const dbData = customerToDb(customer)
+    const dbData = {
+      id: customer.id,
+      name: customer.name,
+      group: customer.group,
+      country: customer.country,
+      region: customer.region,
+      company: customer.company,
+      email: customer.email,
+      phone: customer.phone,
+      address: customer.address
+    }
     await syncToSupabase('customers', dbData)
     console.log('[同步] 客户已保存到后端')
   } catch (error) {
@@ -592,36 +606,6 @@ export async function addCustomer(data) {
   return customer
 }
 
-export function customerToDb(customer) {
-  return {
-    id: customer.id,
-    name: customer.name,
-    company: customer.group || '',
-    email: customer.email || '',
-    phone: customer.region || ''
-  }
-}
-
-export function dbToCustomer(dbRow) {
-  return {
-    id: dbRow.id,
-    name: dbRow.name || '',
-    group: dbRow.company || '',
-    email: dbRow.email || '',
-    region: dbRow.phone || '',
-    model: dbRow.model || '',
-    firstContactDate: dbRow.firstContactDate || '',
-    sampleCount: dbRow.sampleCount || 0,
-    notes: dbRow.notes || '',
-    remark: dbRow.remark || '',
-    localMaterialPath: dbRow.localMaterialPath || '',
-    attachments: dbRow.attachments || [],
-    tags: dbRow.tags || [],
-    createdAt: dbRow.createdAt || '',
-    updatedAt: dbRow.updatedAt || ''
-  }
-}
-
 export async function updateCustomer(customer) {
   const idx = store.customers.findIndex(c => c.id === customer.id)
   if (idx > -1) {
@@ -629,7 +613,17 @@ export async function updateCustomer(customer) {
     
     try {
       const { syncToSupabase } = await import('./supabase.js')
-      const dbData = customerToDb(store.customers[idx])
+      const dbData = {
+        id: store.customers[idx].id,
+        name: store.customers[idx].name,
+        group: store.customers[idx].group,
+        country: store.customers[idx].country,
+        region: store.customers[idx].region,
+        company: store.customers[idx].company,
+        email: store.customers[idx].email,
+        phone: store.customers[idx].phone,
+        address: store.customers[idx].address
+      }
       await syncToSupabase('customers', dbData)
       console.log('[同步] 客户已更新到后端')
     } catch (error) {
@@ -908,7 +902,17 @@ export async function updateCustomerGroup(oldName, newName) {
   
   for (const customer of store.customers) {
     if (customer.group === newName.trim()) {
-      const dbData = customerToDb(customer)
+      const dbData = {
+        id: customer.id,
+        name: customer.name,
+        group: customer.group,
+        country: customer.country,
+        region: customer.region,
+        company: customer.company,
+        email: customer.email,
+        phone: customer.phone,
+        address: customer.address
+      }
       await syncToSupabase('customers', dbData)
     }
   }
@@ -933,7 +937,7 @@ export async function syncCustomerGroupsFromSupabase() {
     const result = await fetchFromSupabase('customers')
     
     if (result.success && result.data && result.data.length > 0) {
-      const groups = [...new Set(result.data.map(c => c.company).filter(n => n))]
+      const groups = [...new Set(result.data.map(c => c.group).filter(n => n))]
       if (groups.length > 0) {
         store.customerGroups = groups
         console.log('[同步] 从后端加载客户分组:', store.customerGroups)
@@ -1053,11 +1057,10 @@ export async function syncAllFromSupabase(showToast = true) {
     
     const tables = [
       { name: 'customers', key: 'customers', transform: (data) => {
-        const customers = data.map(c => dbToCustomer(c))
-        const groups = [...new Set(customers.map(c => c.group).filter(n => n))]
+        const groups = [...new Set(data.map(c => c.group).filter(n => n))]
         store.customerGroups = groups
         console.log(`[同步] 从客户表提取分组: ${groups.length} 个`)
-        return customers
+        return data
       }},
       { name: 'sample_deliveries', key: 'sampleDeliveries' },
       { name: 'sales_orders', key: 'salesOrders' },

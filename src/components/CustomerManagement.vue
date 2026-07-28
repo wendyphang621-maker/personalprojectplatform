@@ -16,8 +16,11 @@
             <el-table-column prop="id" label="客户ID" width="80" />
             <el-table-column prop="name" label="客户姓名" />
             <el-table-column prop="group" label="客户分组" />
+            <el-table-column prop="country" label="国家" />
+            <el-table-column prop="region" label="地区" />
+            <el-table-column prop="company" label="公司" />
             <el-table-column prop="email" label="海外邮箱" />
-            <el-table-column prop="region" label="国家地区" />
+            <el-table-column prop="phone" label="电话" />
             <el-table-column prop="model" label="对接机型" />
             <el-table-column prop="firstContactDate" label="首次联系日期" />
             <el-table-column label="累计寄样次数" width="120">
@@ -236,15 +239,27 @@
           <el-input v-model="customerForm.name" />
         </el-form-item>
         <el-form-item label="客户分组">
-          <el-select v-model="customerForm.group">
+          <el-select v-model="customerForm.group" clearable filterable allow-create>
             <el-option v-for="g in customerGroups" :key="g" :label="g" :value="g" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="国家">
+          <el-input v-model="customerForm.country" />
+        </el-form-item>
+        <el-form-item label="地区">
+          <el-input v-model="customerForm.region" />
+        </el-form-item>
+        <el-form-item label="公司">
+          <el-input v-model="customerForm.company" />
         </el-form-item>
         <el-form-item label="海外邮箱">
           <el-input v-model="customerForm.email" />
         </el-form-item>
-        <el-form-item label="国家地区">
-          <el-input v-model="customerForm.region" />
+        <el-form-item label="电话">
+          <el-input v-model="customerForm.phone" />
+        </el-form-item>
+        <el-form-item label="地址">
+          <el-input v-model="customerForm.address" />
         </el-form-item>
         <el-form-item label="对接机型">
           <el-select v-model="customerForm.model" filterable>
@@ -311,8 +326,11 @@
                 <th>客户ID</th>
                 <th>客户姓名</th>
                 <th>客户分组</th>
+                <th>国家</th>
+                <th>地区</th>
+                <th>公司</th>
                 <th>海外邮箱</th>
-                <th>国家地区</th>
+                <th>电话</th>
                 <th>对接机型</th>
                 <th>首次联系日期</th>
                 <th>累计寄样次数</th>
@@ -326,8 +344,11 @@
                 <td>{{ c.id }}</td>
                 <td>{{ c.name }}</td>
                 <td>{{ c.group }}</td>
-                <td>{{ c.email }}</td>
+                <td>{{ c.country || '-' }}</td>
                 <td>{{ c.region }}</td>
+                <td>{{ c.company || '-' }}</td>
+                <td>{{ c.email }}</td>
+                <td>{{ c.phone || '-' }}</td>
                 <td>{{ c.model }}</td>
                 <td>{{ c.firstContactDate }}</td>
                 <td>{{ c.sampleCount }}</td>
@@ -637,8 +658,12 @@ const customerForm = reactive({
   id: '',
   name: '',
   group: '',
-  email: '',
+  country: '',
   region: '',
+  company: '',
+  email: '',
+  phone: '',
+  address: '',
   model: '',
   firstContactDate: new Date().toISOString().split('T')[0],
   sampleCount: 0,
@@ -795,8 +820,12 @@ function handleAddCustomer() {
     id: '',
     name: '',
     group: '',
-    email: '',
+    country: '',
     region: '',
+    company: '',
+    email: '',
+    phone: '',
+    address: '',
     model: '',
     firstContactDate: new Date().toISOString().split('T')[0],
     sampleCount: 0,
@@ -814,8 +843,12 @@ function handleEditCustomer(row) {
     id: row.id,
     name: row.name,
     group: row.group,
-    email: row.email,
+    country: row.country || '',
     region: row.region,
+    company: row.company || '',
+    email: row.email,
+    phone: row.phone || '',
+    address: row.address || '',
     model: row.model,
     firstContactDate: row.firstContactDate,
     sampleCount: row.sampleCount,
@@ -900,14 +933,6 @@ function previewCustomers() {
 }
 
 async function confirmCustomer() {
-  if (!customerForm.name.trim()) {
-    alert('请填写客户姓名')
-    return
-  }
-  if (!customerForm.group.trim()) {
-    alert('请填写客户分组')
-    return
-  }
   if (!customerForm.id.trim()) {
     customerForm.id = generateId('C')
   }
@@ -917,6 +942,9 @@ async function confirmCustomer() {
       alert(`客户ID "${customerForm.id}" 已存在，请更换其他ID`)
       return
     }
+  }
+  if (!customerForm.name.trim()) {
+    console.log('[提示] 客户姓名为空')
   }
   if (isEditingCustomer.value) {
     await updateCustomer(customerForm)
@@ -1174,9 +1202,9 @@ function previewSamples() {
 }
 
 function exportCustomers() {
-  const headers = ['客户ID', '客户姓名', '客户分组', '海外邮箱', '国家地区', '对接机型', '首次联系日期', '累计寄样次数', '备注']
+  const headers = ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at']
   const data = filteredCustomers.value.map(c => [
-    c.id, c.name, c.group, c.email, c.region, c.model, c.firstContactDate, c.sampleCount, c.remark
+    c.id, c.name, c.group, c.country || '', c.region || '', c.company || '', c.email || '', c.phone || '', c.address || '', c.firstContactDate || ''
   ])
   exportToExcel('客户台账', headers, data)
 }

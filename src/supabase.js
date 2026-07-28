@@ -915,3 +915,40 @@ export async function listFilesFromSupabase(customerId) {
     return { success: false, error: err.message, data: [] }
   }
 }
+
+export async function updatePassword(oldPassword, newPassword) {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置' }
+  }
+  
+  try {
+    const { data: { user } } = await client.auth.getUser()
+    if (!user) {
+      return { success: false, error: '未登录' }
+    }
+    
+    const { error: signInError } = await client.auth.signInWithPassword({
+      email: user.email,
+      password: oldPassword
+    })
+    
+    if (signInError) {
+      return { success: false, error: '旧密码错误' }
+    }
+    
+    const { error } = await client.auth.updateUser({
+      password: newPassword
+    })
+    
+    if (error) {
+      console.error('[Supabase] 更新密码错误:', error.message)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true }
+  } catch (err) {
+    console.error('[Supabase] 更新密码异常:', err.message)
+    return { success: false, error: err.message }
+  }
+}

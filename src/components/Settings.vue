@@ -702,7 +702,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
-import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile, clearSavedConfig } from '../supabase.js'
+import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword } from '../supabase.js'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['config-change'])
@@ -1199,9 +1199,14 @@ function clearBrowserCache() {
   location.reload()
 }
 
-function handleChangePassword() {
+async function handleChangePassword() {
   if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
     alert('请填写所有密码字段')
+    return
+  }
+  
+  if (passwordForm.newPassword.length < 6) {
+    alert('新密码至少6位')
     return
   }
   
@@ -1210,14 +1215,24 @@ function handleChangePassword() {
     return
   }
   
-  const result = changePassword(authStore.currentUser?.username, passwordForm.oldPassword, passwordForm.newPassword)
-  if (result.success) {
-    alert('密码修改成功')
-    passwordForm.oldPassword = ''
-    passwordForm.newPassword = ''
-    passwordForm.confirmPassword = ''
-  } else {
-    alert(result.error)
+  try {
+    const result = await updatePassword(passwordForm.oldPassword, passwordForm.newPassword)
+    if (result.success) {
+      alert('密码修改成功！即将退出登录...')
+      passwordForm.oldPassword = ''
+      passwordForm.newPassword = ''
+      passwordForm.confirmPassword = ''
+      setTimeout(() => {
+        localStorage.removeItem('auth_user')
+        sessionStorage.clear()
+        location.href = '/'
+      }, 1500)
+    } else {
+      alert(result.error || '修改失败，请重试')
+    }
+  } catch (error) {
+    console.error('[密码修改] 错误:', error)
+    alert('密码修改失败，请检查网络或联系管理员')
   }
 }
 
