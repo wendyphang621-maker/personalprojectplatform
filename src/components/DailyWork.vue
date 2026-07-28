@@ -133,7 +133,7 @@
                 <div v-if="weeklyData.newCustomers.length > 0">
                   <el-table :data="weeklyData.newCustomers" border stripe>
                     <el-table-column prop="name" label="客户名称" />
-                    <el-table-column prop="country" label="国家" />
+                    <el-table-column prop="region" label="国家" />
                     <el-table-column prop="email" label="邮箱" />
                   </el-table>
                 </div>
@@ -1436,7 +1436,7 @@ function generateWeeklyReport() {
 function copyReport() {
   const reportText = `工作周报 - ${formatWeekDate()}\n\n` +
     `一、本周新增客户（${weeklyData.newCustomers.length}人）\n` +
-    weeklyData.newCustomers.map(c => `- ${c.name} - ${c.country}`).join('\n') + '\n\n' +
+    weeklyData.newCustomers.map(c => `- ${c.name} - ${c.region}`).join('\n') + '\n\n' +
     `二、寄样记录（${weeklyData.sampleDeliveries.length}次）\n` +
     weeklyData.sampleDeliveries.map(s => `- ${s.customerName} - ${s.model} - ${s.quantity}台`).join('\n') + '\n\n' +
     `三、订单进度（${weeklyData.salesOrders.length}单）\n` +
@@ -1456,7 +1456,7 @@ function exportReport() {
   
   data.push(['本周新增客户', weeklyData.newCustomers.length + '人'])
   weeklyData.newCustomers.forEach(c => {
-    data.push(['', `${c.name} - ${c.country} - ${c.email}`])
+    data.push(['', `${c.name} - ${c.region} - ${c.email}`])
   })
   
   data.push(['寄样记录', weeklyData.sampleDeliveries.length + '次'])

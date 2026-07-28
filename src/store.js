@@ -79,11 +79,11 @@ const defaultData = {
   ],
   
   customers: [
-    { id: 'c1', name: 'Hans', group: 'Hans', email: 'hans@example.com', country: 'Germany', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
-    { id: 'c2', name: 'Ethan', group: 'Ethan', email: 'ethan@example.com', country: 'USA', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
-    { id: 'c3', name: 'Jason', group: 'Jason', email: 'jason@example.com', country: 'Canada', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
-    { id: 'c4', name: 'Ralph', group: 'Ralph', email: 'ralph@example.com', country: 'UK', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
-    { id: 'c5', name: 'Mr.Krish', group: 'Mr.Krish', email: 'krish@example.com', country: 'India', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
+    { id: 'c1', name: 'Hans', group: 'Hans', email: 'hans@example.com', region: 'Germany', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
+    { id: 'c2', name: 'Ethan', group: 'Ethan', email: 'ethan@example.com', region: 'USA', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
+    { id: 'c3', name: 'Jason', group: 'Jason', email: 'jason@example.com', region: 'Canada', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
+    { id: 'c4', name: 'Ralph', group: 'Ralph', email: 'ralph@example.com', region: 'UK', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
+    { id: 'c5', name: 'Mr.Krish', group: 'Mr.Krish', email: 'krish@example.com', region: 'India', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
   ],
   
   sampleDeliveries: [
@@ -566,7 +566,7 @@ export async function addCustomer(data) {
     name: data.name || '',
     group: data.group || '',
     email: data.email || '',
-    country: data.country || '',
+    region: data.region || '',
     model: data.model || '',
     firstContactDate: data.firstContactDate || new Date().toISOString().split('T')[0],
     sampleCount: data.sampleCount || 0,
@@ -882,7 +882,7 @@ export async function updateCustomerGroup(oldName, newName) {
         name: customer.name,
         group: newName.trim(),
         email: customer.email,
-        country: customer.country,
+        region: customer.region,
         company: customer.company
       })
     }

@@ -182,7 +182,7 @@
                 <div v-if="weeklyReportData.newCustomers.length > 0">
                   <p><strong>新增客户：</strong></p>
                   <ul>
-                    <li v-for="c in weeklyReportData.newCustomers" :key="c.id">{{ c.name }} - {{ c.country }}</li>
+                    <li v-for="c in weeklyReportData.newCustomers" :key="c.id">{{ c.name }} - {{ c.region }}</li>
                   </ul>
                 </div>
                 <div v-if="weeklyReportData.sampleDeliveries.length > 0">
@@ -1130,7 +1130,7 @@ function copyWeeklyReport() {
     `订单成交：${data.salesOrders.length}单\n` +
     `待办完成：${data.completedTodos.length}项\n\n` +
     `二、详细记录\n` +
-    (data.newCustomers.length > 0 ? `新增客户：\n${data.newCustomers.map(c => `- ${c.name} - ${c.country}`).join('\n')}\n` : '') +
+    (data.newCustomers.length > 0 ? `新增客户：\n${data.newCustomers.map(c => `- ${c.name} - ${c.region}`).join('\n')}\n` : '') +
     (data.sampleDeliveries.length > 0 ? `寄样记录：\n${data.sampleDeliveries.map(s => `- ${s.customerName} - ${s.model} - ${s.quantity}台`).join('\n')}\n` : '') +
     `\n三、问题与困难\n${data.problems}\n\n` +
     `四、下周工作计划\n${data.nextWeekPlan}`
@@ -1380,7 +1380,7 @@ function exportWeeklyReport() {
   ]
   
   data.newCustomers.forEach(c => {
-    exportData.push(['新增客户', c.name, c.country, '', ''])
+    exportData.push(['新增客户', c.name, c.region, '', ''])
   })
   
   data.sampleDeliveries.forEach(s => {

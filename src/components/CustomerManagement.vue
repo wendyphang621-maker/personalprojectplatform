@@ -17,7 +17,7 @@
             <el-table-column prop="name" label="客户姓名" />
             <el-table-column prop="group" label="客户分组" />
             <el-table-column prop="email" label="海外邮箱" />
-            <el-table-column prop="country" label="国家地区" />
+            <el-table-column prop="region" label="国家地区" />
             <el-table-column prop="model" label="对接机型" />
             <el-table-column prop="firstContactDate" label="首次联系日期" />
             <el-table-column label="累计寄样次数" width="120">
@@ -244,7 +244,7 @@
           <el-input v-model="customerForm.email" />
         </el-form-item>
         <el-form-item label="国家地区">
-          <el-input v-model="customerForm.country" />
+          <el-input v-model="customerForm.region" />
         </el-form-item>
         <el-form-item label="对接机型">
           <el-select v-model="customerForm.model" filterable>
@@ -327,7 +327,7 @@
                 <td>{{ c.name }}</td>
                 <td>{{ c.group }}</td>
                 <td>{{ c.email }}</td>
-                <td>{{ c.country }}</td>
+                <td>{{ c.region }}</td>
                 <td>{{ c.model }}</td>
                 <td>{{ c.firstContactDate }}</td>
                 <td>{{ c.sampleCount }}</td>
@@ -638,7 +638,7 @@ const customerForm = reactive({
   name: '',
   group: '',
   email: '',
-  country: '',
+  region: '',
   model: '',
   firstContactDate: new Date().toISOString().split('T')[0],
   sampleCount: 0,
@@ -796,7 +796,7 @@ function handleAddCustomer() {
     name: '',
     group: '',
     email: '',
-    country: '',
+    region: '',
     model: '',
     firstContactDate: new Date().toISOString().split('T')[0],
     sampleCount: 0,
@@ -815,7 +815,7 @@ function handleEditCustomer(row) {
     name: row.name,
     group: row.group,
     email: row.email,
-    country: row.country,
+    region: row.region,
     model: row.model,
     firstContactDate: row.firstContactDate,
     sampleCount: row.sampleCount,
@@ -1172,7 +1172,7 @@ function previewSamples() {
 function exportCustomers() {
   const headers = ['客户ID', '客户姓名', '客户分组', '海外邮箱', '国家地区', '对接机型', '首次联系日期', '累计寄样次数', '备注']
   const data = filteredCustomers.value.map(c => [
-    c.id, c.name, c.group, c.email, c.country, c.model, c.firstContactDate, c.sampleCount, c.remark
+    c.id, c.name, c.group, c.email, c.region, c.model, c.firstContactDate, c.sampleCount, c.remark
   ])
   exportToExcel('客户台账', headers, data)
 }
