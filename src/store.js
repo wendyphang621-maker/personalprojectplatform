@@ -856,13 +856,6 @@ export async function addCustomerGroup(name) {
   
   store.customerGroups.push(name.trim())
   
-  const { syncToSupabase } = await import('./supabase.js')
-  await syncToSupabase('customer_groups', {
-    id: generateId('cg'),
-    name: name.trim(),
-    createdAt: new Date().toISOString()
-  })
-  
   return { success: true }
 }
 
@@ -879,15 +872,18 @@ export async function updateCustomerGroup(oldName, newName) {
     }
   })
   
-  const { syncToSupabase, fetchFromSupabase } = await import('./supabase.js')
-  const { data } = await fetchFromSupabase('customer_groups')
-  if (data && Array.isArray(data)) {
-    const group = data.find(g => g.name === oldName)
-    if (group) {
-      await syncToSupabase('customer_groups', {
-        ...group,
-        name: newName.trim(),
-        updatedAt: new Date().toISOString()
+  const { syncToSupabase } = await import('./supabase.js')
+  const customersToUpdate = store.customers.filter(c => c.group === newName.trim() && store.customers.some(oc => oc.id === c.id && oc.group === newName.trim()))
+  
+  for (const customer of store.customers) {
+    if (customer.group === newName.trim()) {
+      await syncToSupabase('customers', {
+        id: customer.id,
+        name: customer.name,
+        group: newName.trim(),
+        email: customer.email,
+        country: customer.country,
+        company: customer.company
       })
     }
   }
@@ -903,27 +899,18 @@ export async function deleteCustomerGroup(name) {
   
   store.customerGroups.splice(index, 1)
   
-  const { deleteFromSupabase, fetchFromSupabase } = await import('./supabase.js')
-  const { data } = await fetchFromSupabase('customer_groups')
-  if (data && Array.isArray(data)) {
-    const group = data.find(g => g.name === name)
-    if (group) {
-      await deleteFromSupabase('customer_groups', group.id)
-    }
-  }
-  
   return { success: true }
 }
 
 export async function syncCustomerGroupsFromSupabase() {
   try {
     const { fetchFromSupabase } = await import('./supabase.js')
-    const result = await fetchFromSupabase('customer_groups')
+    const result = await fetchFromSupabase('customers')
     
     if (result.success && result.data && result.data.length > 0) {
-      const groups = result.data.map(g => g.name).filter(n => n)
+      const groups = [...new Set(result.data.map(c => c.group).filter(n => n))]
       if (groups.length > 0) {
-        store.customerGroups = [...new Set(groups)]
+        store.customerGroups = groups
         console.log('[同步] 从后端加载客户分组:', store.customerGroups)
         return { success: true, count: groups.length }
       }
@@ -1040,8 +1027,12 @@ export async function syncAllFromSupabase(showToast = true) {
     }
     
     const tables = [
-      { name: 'customers', key: 'customers' },
-      { name: 'customer_groups', key: 'customerGroups', transform: (data) => data.map(g => g.name).filter(n => n) },
+      { name: 'customers', key: 'customers', transform: (data) => {
+        const groups = [...new Set(data.map(c => c.group).filter(n => n))]
+        store.customerGroups = groups
+        console.log(`[同步] 从客户表提取分组: ${groups.length} 个`)
+        return data
+      }},
       { name: 'sample_deliveries', key: 'sampleDeliveries' },
       { name: 'sales_orders', key: 'salesOrders' },
       { name: 'product_models', key: 'productModels' },
