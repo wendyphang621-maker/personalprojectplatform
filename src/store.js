@@ -582,13 +582,44 @@ export async function addCustomer(data) {
   
   try {
     const { syncToSupabase } = await import('./supabase.js')
-    await syncToSupabase('customers', customer)
+    const dbData = customerToDb(customer)
+    await syncToSupabase('customers', dbData)
     console.log('[同步] 客户已保存到后端')
   } catch (error) {
     console.error('[同步] 客户保存失败:', error)
   }
   
   return customer
+}
+
+export function customerToDb(customer) {
+  return {
+    id: customer.id,
+    name: customer.name,
+    company: customer.group || '',
+    email: customer.email || '',
+    phone: customer.region || ''
+  }
+}
+
+export function dbToCustomer(dbRow) {
+  return {
+    id: dbRow.id,
+    name: dbRow.name || '',
+    group: dbRow.company || '',
+    email: dbRow.email || '',
+    region: dbRow.phone || '',
+    model: dbRow.model || '',
+    firstContactDate: dbRow.firstContactDate || '',
+    sampleCount: dbRow.sampleCount || 0,
+    notes: dbRow.notes || '',
+    remark: dbRow.remark || '',
+    localMaterialPath: dbRow.localMaterialPath || '',
+    attachments: dbRow.attachments || [],
+    tags: dbRow.tags || [],
+    createdAt: dbRow.createdAt || '',
+    updatedAt: dbRow.updatedAt || ''
+  }
 }
 
 export async function updateCustomer(customer) {
@@ -598,7 +629,8 @@ export async function updateCustomer(customer) {
     
     try {
       const { syncToSupabase } = await import('./supabase.js')
-      await syncToSupabase('customers', store.customers[idx])
+      const dbData = customerToDb(store.customers[idx])
+      await syncToSupabase('customers', dbData)
       console.log('[同步] 客户已更新到后端')
     } catch (error) {
       console.error('[同步] 客户更新失败:', error)
@@ -873,18 +905,11 @@ export async function updateCustomerGroup(oldName, newName) {
   })
   
   const { syncToSupabase } = await import('./supabase.js')
-  const customersToUpdate = store.customers.filter(c => c.group === newName.trim() && store.customers.some(oc => oc.id === c.id && oc.group === newName.trim()))
   
   for (const customer of store.customers) {
     if (customer.group === newName.trim()) {
-      await syncToSupabase('customers', {
-        id: customer.id,
-        name: customer.name,
-        group: newName.trim(),
-        email: customer.email,
-        region: customer.region,
-        company: customer.company
-      })
+      const dbData = customerToDb(customer)
+      await syncToSupabase('customers', dbData)
     }
   }
   
@@ -908,7 +933,7 @@ export async function syncCustomerGroupsFromSupabase() {
     const result = await fetchFromSupabase('customers')
     
     if (result.success && result.data && result.data.length > 0) {
-      const groups = [...new Set(result.data.map(c => c.group).filter(n => n))]
+      const groups = [...new Set(result.data.map(c => c.company).filter(n => n))]
       if (groups.length > 0) {
         store.customerGroups = groups
         console.log('[同步] 从后端加载客户分组:', store.customerGroups)
@@ -1028,10 +1053,11 @@ export async function syncAllFromSupabase(showToast = true) {
     
     const tables = [
       { name: 'customers', key: 'customers', transform: (data) => {
-        const groups = [...new Set(data.map(c => c.group).filter(n => n))]
+        const customers = data.map(c => dbToCustomer(c))
+        const groups = [...new Set(customers.map(c => c.group).filter(n => n))]
         store.customerGroups = groups
         console.log(`[同步] 从客户表提取分组: ${groups.length} 个`)
-        return data
+        return customers
       }},
       { name: 'sample_deliveries', key: 'sampleDeliveries' },
       { name: 'sales_orders', key: 'salesOrders' },

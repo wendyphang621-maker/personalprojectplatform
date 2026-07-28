@@ -904,6 +904,10 @@ async function confirmCustomer() {
     alert('请填写客户姓名')
     return
   }
+  if (!customerForm.group.trim()) {
+    alert('请填写客户分组')
+    return
+  }
   if (!customerForm.id.trim()) {
     customerForm.id = generateId('C')
   }
