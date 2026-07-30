@@ -435,6 +435,180 @@ export function setLocalMode(mode) {
   console.log(`[配置] 本地模式已${mode ? '开启' : '关闭'}`)
 }
 
+const TABLE_SCHEMA = {
+  customers: {
+    allowedFields: ['id', 'name', 'group_name', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at', 'updated_at']
+  },
+  sample_deliveries: {
+    allowedFields: ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'remark']
+  },
+  package_sample_follows: {
+    allowedFields: ['id', 'customer_name', 'model', 'follow_content', 'next_follow_date', 'last_follow_date', 'follow_type', 'remark', 'created_at', 'updated_at']
+  },
+  product_models: {
+    allowedFields: ['id', 'model_name', 'chip_scheme', 'screen_param', 'cert_list', 'supplier_name', 'created_at', 'updated_at']
+  },
+  product_certs: {
+    allowedFields: ['id', 'model_id', 'model_name', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'attachments', 'created_at', 'updated_at']
+  },
+  product_images: {
+    allowedFields: ['id', 'model_id', 'pic_url', 'pic_size', 'pic_type', 'upload_time', 'created_at']
+  },
+  logistics_orders: {
+    allowedFields: ['id', 'order_no', 'tracking_no', 'logistics_company', 'status', 'estimated_delivery', 'actual_delivery', 'created_at', 'updated_at']
+  },
+  package_freight_records: {
+    allowedFields: ['id', 'customer_name', 'model', 'invoice_no', 'total_amount', 'paid_amount', 'unpaid_amount', 'currency', 'remark', 'created_at', 'updated_at']
+  },
+  sales_orders: {
+    allowedFields: ['id', 'order_no', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'bulk_freight', 'freight_currency', 'order_type', 'payment_status', 'currency', 'created_at', 'updated_at']
+  },
+  customer_groups: {
+    allowedFields: ['id', 'group_name', 'description', 'color', 'created_at']
+  }
+}
+
+const FIELD_MAPPING = {
+  sample_deliveries: {},
+  sales_orders: {
+    id: 'order_no',
+    customerName: 'customer_name',
+    bookingDate: 'order_date',
+    logisticsNo: 'logistics_no',
+    qty: 'quantity',
+    bulkFreight: 'bulk_freight',
+    orderType: 'order_type',
+    balanceSettled: 'payment_status'
+  },
+  package_sample_follows: {
+    customerId: 'customer_name',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    nextFollowDate: 'next_follow_date',
+    lastFollowDate: 'last_follow_date'
+  },
+  product_models: {
+    chipScheme: 'chip_scheme',
+    screenParam: 'screen_param',
+    certList: 'cert_list',
+    supplierName: 'supplier_name',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  product_certs: {
+    modelId: 'model_id',
+    modelName: 'model_name',
+    certType: 'cert_type',
+    certNo: 'cert_no',
+    issueDate: 'issue_date',
+    expireDate: 'expire_date',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  product_images: {
+    modelId: 'model_id',
+    picUrl: 'pic_url',
+    picSize: 'pic_size',
+    picType: 'pic_type',
+    uploadTime: 'upload_time',
+    createdAt: 'created_at'
+  },
+  customers: {
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  logistics_orders: {
+    orderNo: 'order_no',
+    trackingNo: 'tracking_no',
+    logisticsCompany: 'logistics_company',
+    estimatedDelivery: 'estimated_delivery',
+    actualDelivery: 'actual_delivery',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  package_freight_records: {
+    invoiceNo: 'invoice_no',
+    totalAmount: 'total_amount',
+    paidAmount: 'paid_amount',
+    unpaidAmount: 'unpaid_amount',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  }
+}
+
+function camelToSnake(str) {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
+}
+
+function snakeToCamel(str) {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+}
+
+function convertFieldName(fieldName, mapping, direction) {
+  if (!mapping) return fieldName
+  if (direction === 'toSnake') {
+    const directMap = mapping[fieldName]
+    if (directMap) return directMap
+    return camelToSnake(fieldName)
+  } else {
+    for (const [camel, snake] of Object.entries(mapping)) {
+      if (snake === fieldName) return camel
+    }
+    return snakeToCamel(fieldName)
+  }
+}
+
+function convertDataForSupabase(data, tableName) {
+  const mapping = FIELD_MAPPING[tableName]
+  const schema = TABLE_SCHEMA[tableName]
+  const allowedFields = schema ? schema.allowedFields : null
+  
+  let converted = data
+  if (mapping) {
+    converted = {}
+    for (const [key, value] of Object.entries(data)) {
+      const newKey = convertFieldName(key, mapping, 'toSnake')
+      converted[newKey] = value
+    }
+  }
+  
+  if (!allowedFields) return converted
+  
+  const filtered = {}
+  let strippedCount = 0
+  for (const [key, value] of Object.entries(converted)) {
+    if (allowedFields.includes(key)) {
+      filtered[key] = value
+    } else {
+      strippedCount++
+    }
+  }
+  
+  if (strippedCount > 0) {
+    console.log(`[字段过滤] 表 ${tableName} 已剥离 ${strippedCount} 个不在白名单中的字段`)
+  }
+  
+  return filtered
+}
+
+function convertDataFromSupabase(data, tableName) {
+  const mapping = FIELD_MAPPING[tableName]
+  if (!mapping) return data
+  
+  if (Array.isArray(data)) {
+    return data.map(item => convertDataFromSupabase(item, tableName))
+  }
+  
+  if (!data || typeof data !== 'object') return data
+  
+  const result = {}
+  for (const [key, value] of Object.entries(data)) {
+    const newKey = convertFieldName(key, mapping, 'toCamel')
+    result[newKey] = value
+  }
+  return result
+}
+
 export async function syncToSupabase(tableName, data) {
   const client = await getSupabase()
   if (!client) {
@@ -443,43 +617,123 @@ export async function syncToSupabase(tableName, data) {
   }
   
   try {
-    const { error } = await client
-      .from(tableName)
-      .upsert(data, { onConflict: 'id' })
+    let convertedData = convertDataForSupabase(data, tableName)
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     
-    if (error) {
-      console.error('Supabase sync error:', error)
-      return { success: false, error: error.message }
+    const tablesWithTextId = ['sample_deliveries']
+    const preserveId = tablesWithTextId.includes(tableName)
+    
+    if (convertedData.id && !uuidPattern.test(convertedData.id) && !preserveId) {
+      console.log(`[Supabase] 剥离非UUID格式的本地ID: ${convertedData.id}`)
+      delete convertedData.id
+    }
+    console.log(`[Supabase] 同步表 ${tableName}, 待提交字段:`, Object.keys(convertedData))
+    console.log(`[Supabase] 待提交数据:`, JSON.stringify(convertedData))
+    
+    let result
+    if (!convertedData.id) {
+      result = await client
+        .from(tableName)
+        .insert(convertedData)
+        .select()
+    } else {
+      result = await client
+        .from(tableName)
+        .upsert(convertedData, { onConflict: 'id' })
+        .select()
     }
     
-    return { success: true }
+    const { data: resultData, error } = result
+    
+    if (error) {
+      console.error('[Supabase] 原始错误:', error.message)
+      const classified = classifySupabaseError(error)
+      console.error('[Supabase] 分类错误:', classified.message)
+      return { 
+        success: false, 
+        error: classified.message,
+        errorType: classified.type,
+        rawError: error.message
+      }
+    }
+    
+    const returnedId = resultData && resultData.length > 0 ? (resultData[0].id || resultData[0].delivery_id) : null
+    return { success: true, id: returnedId, data: resultData }
   } catch (err) {
-    console.error('Supabase sync exception:', err)
-    return { success: false, error: err.message }
+    console.error('[Supabase] 异常:', err.message)
+    const classified = classifySupabaseError(err)
+    return { 
+      success: false, 
+      error: classified.message,
+      errorType: classified.type,
+      rawError: err.message
+    }
   }
 }
 
-export async function fetchFromSupabase(tableName) {
+function classifySupabaseError(error) {
+  if (!error) return { type: 'unknown', message: '' }
+  const msg = error.message || String(error)
+  
+  if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('42P01')) {
+    if (msg.includes('column')) {
+      const colMatch = msg.match(/column\s+"([^"]+)"/i)
+      const colName = colMatch ? colMatch[1] : '未知'
+      return { type: 'field_error', message: `字段 "${colName}" 不存在于数据库表中，请检查字段名` }
+    }
+    return { type: 'table_missing', message: '数据表不存在，请在 Supabase 创建对应表' }
+  }
+  if (msg.includes('permission') || msg.includes('policy') || msg.includes('42501') || msg.includes('violates')) {
+    return { type: 'permission', message: '权限不足，请检查 RLS 策略或登录状态' }
+  }
+  if (msg.includes('auth') || msg.includes('token') || msg.includes('jwt')) {
+    return { type: 'auth', message: '认证失败，请重新登录' }
+  }
+  return { type: 'other', message: msg }
+}
+
+export async function fetchFromSupabase(tableName, options = {}) {
+  const { page = 1, pageSize = 50 } = options
   const client = await getSupabase()
   if (!client) {
     console.log('Supabase not configured, skipping fetch')
-    return { success: false, data: [], error: 'Supabase not configured' }
+    return { success: false, data: [], error: 'Supabase not configured', errorType: 'config' }
   }
   
   try {
-    const { data, error } = await client
+    const from = (page - 1) * pageSize
+    const { data, error, count } = await client
       .from(tableName)
-      .select('*')
+      .select('*', { count: 'exact' })
+      .range(from, from + pageSize - 1)
+      .order('created_at', { ascending: false })
     
     if (error) {
-      console.error('Supabase fetch error:', error)
-      return { success: false, data: [], error: error.message }
+      const classified = classifySupabaseError(error)
+      console.error('Supabase fetch error:', classified.message)
+      return { 
+        success: false, 
+        data: [], 
+        error: classified.message,
+        errorType: classified.type 
+      }
     }
     
-    return { success: true, data }
+    const convertedData = convertDataFromSupabase(data || [], tableName)
+    return { 
+      success: true, 
+      data: convertedData,
+      pagination: { page, pageSize, total: count || 0 }
+    }
   } catch (err) {
-    console.error('Supabase fetch exception:', err)
-    return { success: false, data: [], error: err.message }
+    const classified = classifySupabaseError(err)
+    console.error('Supabase fetch exception:', classified.message)
+    return { 
+      success: false, 
+      data: [], 
+      error: classified.message,
+      errorType: classified.type 
+    }
   }
 }
 
@@ -951,4 +1205,128 @@ export async function updatePassword(oldPassword, newPassword) {
     console.error('[Supabase] 更新密码异常:', err.message)
     return { success: false, error: err.message }
   }
+}
+
+export async function createAccount(email, password, displayName, position) {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置' }
+  }
+  
+  try {
+    const { data, error } = await client.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        display_name: displayName,
+        position: position || '销售助理'
+      }
+    })
+    
+    if (error) {
+      console.error('[Supabase] 创建账号错误:', error.message)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, user: data.user }
+  } catch (err) {
+    console.error('[Supabase] 创建账号异常:', err.message)
+    return { success: false, error: err.message }
+  }
+}
+
+export async function listAccounts() {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置', data: [] }
+  }
+  
+  try {
+    const { data, error } = await client.auth.admin.listUsers()
+    
+    if (error) {
+      console.error('[Supabase] 列出账号错误:', error.message)
+      return { success: false, error: error.message, data: [] }
+    }
+    
+    return { success: true, users: data.users }
+  } catch (err) {
+    console.error('[Supabase] 列出账号异常:', err.message)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
+export async function updateAccount(userId, updates) {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置' }
+  }
+  
+  try {
+    const { data, error } = await client.auth.admin.updateUserById(userId, updates)
+    
+    if (error) {
+      console.error('[Supabase] 更新账号错误:', error.message)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, user: data.user }
+  } catch (err) {
+    console.error('[Supabase] 更新账号异常:', err.message)
+    return { success: false, error: err.message }
+  }
+}
+
+export async function deleteAccount(userId) {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置' }
+  }
+  
+  try {
+    const { error } = await client.auth.admin.deleteUser(userId)
+    
+    if (error) {
+      console.error('[Supabase] 删除账号错误:', error.message)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true }
+  } catch (err) {
+    console.error('[Supabase] 删除账号异常:', err.message)
+    return { success: false, error: err.message }
+  }
+}
+
+export async function resetOtherUserPassword(userId, newPassword) {
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase未配置' }
+  }
+  
+  try {
+    const { error } = await client.auth.admin.updateUserById(userId, {
+      password: newPassword
+    })
+    
+    if (error) {
+      console.error('[Supabase] 重置密码错误:', error.message)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true }
+  } catch (err) {
+    console.error('[Supabase] 重置密码异常:', err.message)
+    return { success: false, error: err.message }
+  }
+}
+
+export function getLocalModeStatus() {
+  return getLocalMode()
+}
+
+export function logRequestDestination(module, isCloud) {
+  const mode = getLocalModeStatus()
+  console.log(`[${module}] 本地模式开关: ${mode ? '开启' : '关闭'} | 本次请求去向: ${isCloud ? '云端' : '本地'}`)
 }

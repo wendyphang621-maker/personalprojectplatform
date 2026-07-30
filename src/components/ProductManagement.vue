@@ -7,13 +7,19 @@
             <el-input v-model="searchKeyword" placeholder="搜索机型名称" clearable style="width: 250px" />
             <el-button type="primary" @click="handleAddModel">新增机型</el-button>
             <el-button @click="exportModels">导出Excel</el-button>
+            <el-button type="danger" :disabled="modelSelection.length === 0" @click="batchDeleteModels">批量删除 ({{ modelSelection.length }})</el-button>
           </div>
-          <el-table :data="filteredModels" border stripe>
+          <el-table :data="filteredModels" border stripe @selection-change="val => modelSelection = val">
+            <el-table-column type="selection" width="45" />
             <el-table-column prop="id" label="ID" width="60" />
             <el-table-column prop="name" label="机型名称" />
             <el-table-column prop="chip" label="芯片方案" />
             <el-table-column prop="screen" label="屏幕参数" />
-            <el-table-column prop="certifications" label="配套认证" />
+            <el-table-column label="配套认证">
+              <template #default="{ row }">
+                {{ (Array.isArray(row.certifications) ? row.certifications : []).join(',') }}
+              </template>
+            </el-table-column>
             <el-table-column prop="supplier" label="供应商" />
             <el-table-column label="操作" width="150">
               <template #default="{ row }">
@@ -554,7 +560,20 @@ import { store, addProductModel, updateProductModel, deleteProductModel, addCert
 import { exportToExcel } from '../utils/excelExport.js'
 import { getAllCachedMaterials, addMaterialsToCache, deleteMaterialFromCache, batchDeleteMaterialsFromCache, clearAllCache, getCacheRootFolder, getCacheCount, validateAndCleanCache } from '../utils/materialCache.js'
 
-const activeTab = ref('model')
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'model'
+  }
+})
+
+const activeTab = ref(props.currentSubPage || 'model')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 
 const searchKeyword = ref('')
 const filterCertType = ref('')
@@ -567,6 +586,8 @@ const showCertDialog = ref(false)
 const showSupplierDialog = ref(false)
 const showUploadDialog = ref(false)
 const showAddMaterialDialog = ref(false)
+
+const modelSelection = ref([])
 
 const uploadTargetModel = ref('')
 const localMaterialRootPath = ref(localStorage.getItem('product_material_root_path') || '')
@@ -1782,13 +1803,27 @@ function handleAddModel() {
 
 function handleEditModel(row) {
   isEditingModel.value = true
-  Object.assign(modelForm, row)
+  Object.assign(modelForm, {
+    ...row,
+    certifications: Array.isArray(row.certifications) ? row.certifications : [],
+    materials: Array.isArray(row.materials) ? row.materials : []
+  })
   showModelDialog.value = true
 }
 
 function handleDeleteModel(row) {
   if (confirm(`确定删除机型 ${row.name} 吗？`)) {
     deleteProductModel(row.id)
+  }
+}
+
+function batchDeleteModels() {
+  if (modelSelection.value.length === 0) return
+  if (confirm(`确定批量删除 ${modelSelection.value.length} 个机型？此操作不可恢复`)) {
+    modelSelection.value.forEach(row => {
+      deleteProductModel(row.id)
+    })
+    modelSelection.value = []
   }
 }
 
@@ -1926,7 +1961,7 @@ function confirmAddMaterial() {
 function exportModels() {
   const headers = ['ID', '机型名称', '芯片方案', '屏幕参数', '配套认证', '供应商']
   const data = filteredModels.value.map(m => [
-    m.id, m.name, m.chip, m.screen, m.certifications.join(','), m.supplier
+    m.id, m.name, m.chip, m.screen, (Array.isArray(m.certifications) ? m.certifications : []).join(','), m.supplier
   ])
   exportToExcel('机型参数库', headers, data)
 }
@@ -1942,7 +1977,7 @@ function exportCerts() {
 function exportSuppliers() {
   const headers = ['ID', '供应商名称', '对接人', '联系方式', '供货机型', '资质文件']
   const data = filteredSuppliers.value.map(s => [
-    s.id, s.name, s.contact, s.phone, s.models.join(','), s.qualification
+    s.id, s.name, s.contact, s.phone, (Array.isArray(s.models) ? s.models : []).join(','), s.qualification
   ])
   exportToExcel('供应商台账', headers, data)
 }

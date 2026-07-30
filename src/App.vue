@@ -32,6 +32,41 @@
         <div class="nav-group">
           <div 
             class="nav-group-header"
+            @click="expandedGroups['settings'] = !expandedGroups['settings']"
+          >
+            <svg 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              stroke-width="2" 
+              width="16" 
+              height="16"
+              class="group-icon"
+              :class="{ rotated: expandedGroups['settings'] }"
+            >
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>设置</span>
+          </div>
+          <div v-if="expandedGroups['settings']" class="nav-group-items">
+            <div 
+              v-for="item in visibleSettingsNavItems" 
+              :key="item.subKey"
+              class="nav-item sub-item"
+              :class="{ active: currentPage === item.key && currentSubPage === item.subKey }"
+              @click="handleSettingsNavClick(item.key, item.subKey)"
+            >
+              <component :is="item.icon" />
+              <span>{{ item.label }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="nav-divider"></div>
+        
+        <div class="nav-group">
+          <div 
+            class="nav-group-header"
             @click="expandedGroups['development'] = !expandedGroups['development']"
           >
             <svg 
@@ -110,9 +145,45 @@
             <span class="user-role">{{ store.user.position }}</span>
           </div>
         </div>
-        <div class="local-mode-switch">
-          <span>本地模式</span>
-          <el-switch :model-value="store.localMode" active-text="开" inactive-text="关" @change="handleLocalModeChange" />
+        <div class="local-mode-section">
+          <div class="local-mode-switch">
+            <span class="mode-label">{{ store.localMode ? '本地' : '云端' }}</span>
+            <el-switch 
+              :model-value="store.localMode" 
+              active-text="" 
+              inactive-text="" 
+              @change="handleLocalModeChange" 
+            />
+            <span class="mode-label">{{ store.localMode ? '模式' : '模式' }}</span>
+          </div>
+          <div class="sync-buttons">
+            <el-button 
+              size="small" 
+              :disabled="store.localMode" 
+              @click="openSyncDialog('pull')"
+              title="从云端拉取到本地"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              拉取
+            </el-button>
+            <el-button 
+              size="small" 
+              :disabled="!store.localMode" 
+              @click="openSyncDialog('push')"
+              title="从本地推送到云端"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              推送
+            </el-button>
+          </div>
         </div>
         <div class="logout-btn" @click="handleLogout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -183,18 +254,19 @@
         <CalendarView v-else-if="currentPage === 'calendar'" />
         <FileLibrary v-else-if="currentPage === 'files'" />
         <ReportCenter v-else-if="currentPage === 'report'" />
-        <Settings v-else-if="currentPage === 'settings'" ref="settingsRef" @config-change="handleConfigChange" />
+        <Settings v-else-if="currentPage === 'settings'" ref="settingsRef" @config-change="handleConfigChange" :currentSubPage="currentSubPage" />
         
         <ProjectSpace v-else-if="currentPage === 'project'" :readOnly="isReadOnly('project')" @openAddTask="openAddTaskDialog" />
         <DailyTodo v-else-if="currentPage === 'todo'" :readOnly="isReadOnly('todo')" />
         <MilestoneView v-else-if="currentPage === 'milestone'" :readOnly="isReadOnly('milestone')" />
         <ActivityLog v-else-if="currentPage === 'activity'" :readOnly="isReadOnly('activity')" />
         
-        <CustomerManagement v-else-if="currentPage === 'customer'" />
-        <OrderManagement v-else-if="currentPage === 'order'" />
-        <ProductManagement v-else-if="currentPage === 'product'" />
-        <DailyWork v-else-if="currentPage === 'dailywork'" />
-        <FinanceManagement v-else-if="currentPage === 'finance'" />
+        <CustomerManagement v-else-if="currentPage === 'customer'" :currentSubPage="currentSubPage" />
+        <OrderManagement v-else-if="currentPage === 'order'" :currentSubPage="currentSubPage" />
+        <ProductManagement v-else-if="currentPage === 'product'" :currentSubPage="currentSubPage" />
+        <DailyWork v-else-if="currentPage === 'dailywork'" :currentSubPage="currentSubPage" />
+        <FinanceManagement v-else-if="currentPage === 'finance'" :currentSubPage="currentSubPage" />
+        <SampleDelivery v-else-if="currentPage === 'sample'" />
       </div>
     </main>
     
@@ -332,17 +404,227 @@
         <el-button type="primary" @click="handleSupabaseConfigSubmit">确认连接</el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog 
+      v-model="showSyncDialog" 
+      :title="syncDirection === 'push' ? '推送数据到云端' : '从云端拉取数据'" 
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        :title="syncDirection === 'push' ? '⚠️ 推送风险提示' : '⚠️ 拉取风险提示'"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px;"
+      >
+        <p v-if="syncDirection === 'push'">
+          将把本地所有未同步的数据推送到云端 Supabase。如果云端已有相同 ID 的数据，将被本地数据覆盖。
+        </p>
+        <p v-else>
+          将从云端 Supabase 拉取最新数据到本地。如果本地已有相同 ID 的数据，将被云端数据覆盖。
+        </p>
+        <p style="color: #f56c6c; margin-top: 8px;">此操作不可撤销，请谨慎操作！</p>
+      </el-alert>
+      
+      <el-form-item label="选择同步表">
+        <el-checkbox 
+          :model-value="selectAllTables" 
+          @change="handleSelectAllTables"
+        >
+          全选
+        </el-checkbox>
+      </el-form-item>
+      <div class="sync-table-list">
+        <el-checkbox
+          v-for="table in syncableTables"
+          :key="table.name"
+          v-model="selectedTables"
+          :label="table.name"
+          :value="table.name"
+        >
+          {{ table.label }}
+        </el-checkbox>
+      </div>
+      
+      <template #footer>
+        <el-button @click="showSyncDialog = false">取消</el-button>
+        <el-button 
+          type="primary" 
+          :loading="syncLoading"
+          :disabled="selectedTables.length === 0"
+          @click="executeSync"
+        >
+          确认{{ syncDirection === 'push' ? '推送' : '拉取' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, h, computed, onMounted } from 'vue'
 import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode } from './store.js'
-import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig } from './supabase.js'
+import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig, syncToSupabase, fetchFromSupabase } from './supabase.js'
 import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 let pendingNavKey = null
 let pendingSubKey = null
+
+const syncableTables = [
+  { name: 'customers', label: '客户主台账' },
+  { name: 'sample_deliveries', label: '样机寄样申请' },
+  { name: 'package_sample_follows', label: '客户跟进记录' },
+  { name: 'product_models', label: '机型参数库' },
+  { name: 'product_certs', label: '合规认证档案' },
+  { name: 'product_images', label: '渲染图素材库' },
+  { name: 'logistics_orders', label: '物流运单跟踪' },
+  { name: 'package_freight_records', label: '物流费用对账' },
+  { name: 'sales_orders', label: '订单总台账' },
+  { name: 'customer_groups', label: '客户分组配置' }
+]
+
+const showSyncDialog = ref(false)
+const syncDirection = ref('pull')
+const selectedTables = ref([])
+const selectAllTables = ref(false)
+const syncLoading = ref(false)
+
+function openSyncDialog(direction) {
+  syncDirection.value = direction
+  selectedTables.value = []
+  selectAllTables.value = false
+  showSyncDialog.value = true
+}
+
+function handleSelectAllTables(val) {
+  selectedTables.value = val ? syncableTables.map(t => t.name) : []
+}
+
+async function executeSync() {
+  syncLoading.value = true
+  const tables = selectedTables.value
+  
+  try {
+    ElMessage.info(`开始${syncDirection.value === 'push' ? '推送' : '拉取'} ${tables.length} 张表...`)
+    
+    for (const tableName of tables) {
+      const tableLabel = syncableTables.find(t => t.name === tableName)?.label || tableName
+      
+      if (syncDirection.value === 'pull') {
+        const result = await fetchFromSupabase(tableName, { page: 1, pageSize: 50 })
+        if (result.success) {
+          for (const item of result.data) {
+            await saveLocalData(tableName, item)
+          }
+          ElMessage.success(`${tableLabel}: 拉取 ${result.data.length} 条记录`)
+        } else {
+          ElMessage.error(`${tableLabel}: ${result.error}`)
+        }
+      } else {
+        const localData = await getLocalData(tableName)
+        if (localData.length === 0) {
+          ElMessage.warning(`${tableLabel}: 本地无数据可推送`)
+          continue
+        }
+        
+        let successCount = 0
+        let failCount = 0
+        for (const item of localData) {
+          let pushData = { ...item }
+          if (pushData.id) {
+            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!uuidPattern.test(pushData.id)) {
+              delete pushData.id
+            }
+          }
+          const result = await syncToSupabase(tableName, pushData)
+          if (result.success) {
+            successCount++
+          } else {
+            failCount++
+          }
+        }
+        if (failCount === 0) {
+          ElMessage.success(`${tableLabel}: 推送 ${successCount} 条记录`)
+        } else {
+          ElMessage.warning(`${tableLabel}: 推送 ${successCount} 条成功，${failCount} 条失败`)
+        }
+      }
+    }
+    
+    ElMessage.success('同步完成！')
+    showSyncDialog.value = false
+  } catch (err) {
+    ElMessage.error(`同步失败: ${err.message}`)
+  } finally {
+    syncLoading.value = false
+  }
+}
+
+async function saveLocalData(tableName, data) {
+  const TABLE_STORE_MAP = {
+    'customers': () => store.customers,
+    'sample_deliveries': () => store.sampleDeliveries,
+    'package_sample_follows': () => store.packageSampleFollows,
+    'product_models': () => store.productModels,
+    'product_certs': () => store.certRecords,
+    'product_images': () => store.productImages,
+    'logistics_orders': () => store.logisticsBills,
+    'package_freight_records': () => store.freightRecords,
+    'sales_orders': () => store.salesOrders,
+    'customer_groups': () => store.customerGroups
+  }
+  
+  const getter = TABLE_STORE_MAP[tableName]
+  if (getter) {
+    const list = getter()
+    if (Array.isArray(list)) {
+      const index = list.findIndex(item => item.id === data.id)
+      if (index >= 0) {
+        list[index] = { ...list[index], ...data }
+      } else {
+        list.push(data)
+      }
+    }
+    return
+  }
+  
+  const key = `local_${tableName}`
+  const existing = JSON.parse(localStorage.getItem(key) || '[]')
+  const index = existing.findIndex(item => item.id === data.id)
+  if (index >= 0) {
+    existing[index] = data
+  } else {
+    existing.push(data)
+  }
+  localStorage.setItem(key, JSON.stringify(existing))
+}
+
+async function getLocalData(tableName) {
+  const TABLE_STORE_MAP = {
+    'customers': () => store.customers,
+    'sample_deliveries': () => store.sampleDeliveries,
+    'package_sample_follows': () => store.packageSampleFollows,
+    'product_models': () => store.productModels,
+    'product_certs': () => store.certRecords,
+    'product_images': () => store.productImages || [],
+    'logistics_orders': () => store.logisticsBills,
+    'package_freight_records': () => store.freightRecords || [],
+    'sales_orders': () => store.salesOrders,
+    'customer_groups': () => store.customerGroups.map(g => typeof g === 'string' ? { group_name: g } : g)
+  }
+  
+  const getter = TABLE_STORE_MAP[tableName]
+  if (getter) {
+    const data = getter()
+    return Array.isArray(data) ? data : []
+  }
+  
+  const key = `local_${tableName}`
+  return JSON.parse(localStorage.getItem(key) || '[]')
+}
 import LoginPage from './components/LoginPage.vue'
 import Workbench from './components/Workbench.vue'
 import CalendarView from './components/CalendarView.vue'
@@ -358,6 +640,7 @@ import OrderManagement from './components/OrderManagement.vue'
 import ProductManagement from './components/ProductManagement.vue'
 import DailyWork from './components/DailyWork.vue'
 import FinanceManagement from './components/FinanceManagement.vue'
+import SampleDelivery from './components/SampleDelivery.vue'
 
 const isLoggedIn = computed(() => !!authStore.currentUser)
 
@@ -379,7 +662,8 @@ const expandedGroups = reactive({
   order: true,
   product: true,
   dailywork: true,
-  finance: true
+  finance: true,
+  settings: true
 })
 
 const showNewProjectDialog = ref(false)
@@ -422,9 +706,30 @@ const fixedNavItems = [
   { key: 'workbench', label: '工作台', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' })) },
   { key: 'calendar', label: '日历', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('rect', { x: '3', y: '4', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '16', y1: '2', x2: '16', y2: '6' }), h('line', { x1: '8', y1: '2', x2: '8', y2: '6' }), h('line', { x1: '3', y1: '10', x2: '21', y2: '10' })) },
   { key: 'files', label: '文件资料', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' }), h('line', { x1: '16', y1: '13', x2: '8', y2: '13' }), h('line', { x1: '16', y1: '17', x2: '8', y2: '17' }), h('polyline', { points: '10 9 9 9 8 9' })) },
-  { key: 'report', label: '报表中心', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('line', { x1: '18', y1: '20', x2: '18', y2: '10' }), h('line', { x1: '12', y1: '20', x2: '12', y2: '4' }), h('line', { x1: '6', y1: '20', x2: '6', y2: '14' })) },
-  { key: 'settings', label: '设置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('circle', { cx: '12', cy: '12', r: '3' }), h('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })) }
+  { key: 'report', label: '报表中心', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('line', { x1: '18', y1: '20', x2: '18', y2: '10' }), h('line', { x1: '12', y1: '20', x2: '12', y2: '4' }), h('line', { x1: '6', y1: '20', x2: '6', y2: '14' })) }
 ]
+
+const settingsNavGroup = {
+  key: 'settings',
+  label: '设置',
+  children: [
+    { key: 'settings', subKey: 'user', label: '用户信息', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }), h('circle', { cx: '12', cy: '7', r: '4' })) },
+    { key: 'settings', subKey: 'accounts', label: '账号用户管理', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) },
+    { key: 'settings', subKey: 'supabase', label: '云端存储配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M22 12h-4l-3 9L9 3l-3 9H2' })) },
+    { key: 'settings', subKey: 'alert', label: '预警配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' }), h('line', { x1: '12', y1: '9', x2: '12', y2: '13' }), h('line', { x1: '12', y1: '17', x2: '12.01', y2: '17' })) },
+    { key: 'settings', subKey: 'data', label: '数据管理', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }), h('path', { d: 'M21 12c0 1.66-4 3-9 3s-9-1.34-9-3' }), h('path', { d: 'M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5' })) },
+    { key: 'settings', subKey: 'display', label: '显示设置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('circle', { cx: '12', cy: '12', r: '3' }), h('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' })) },
+    { key: 'settings', subKey: 'about', label: '关于', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('circle', { cx: '12', cy: '12', r: '10' }), h('line', { x1: '12', y1: '16', x2: '12', y2: '12' }), h('line', { x1: '12', y1: '8', x2: '12.01', y2: '8' })) }
+  ]
+}
+
+const visibleSettingsNavItems = computed(() => {
+  const items = [...settingsNavGroup.children]
+  if (store.user.role !== 'admin') {
+    return items.filter(item => item.subKey !== 'accounts' && item.subKey !== 'supabase')
+  }
+  return items
+})
 
 const developmentNavItems = [
   { key: 'project', label: '项目管理', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '20', height: '20' }, h('path', { d: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z' })) },
@@ -440,7 +745,6 @@ const salesNavGroups = [
     children: [
       { key: 'customer', subKey: 'main', label: '海外客户主台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }), h('circle', { cx: '12', cy: '7', r: '4' })) },
       { key: 'customer', subKey: 'followup', label: '客户跟进记录', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) },
-      { key: 'customer', subKey: 'sample', label: '样机寄样申请', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }), h('circle', { cx: '12', cy: '10', r: '3' })) },
       { key: 'customer', subKey: 'group', label: '客户分组配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) }
     ]
   },
@@ -448,7 +752,8 @@ const salesNavGroups = [
     key: 'order',
     label: '订单出货管理',
     children: [
-      { key: 'order', subKey: 'main', label: '订单总台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' })) },
+      { key: 'order', subKey: 'main', label: '大货订单台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }), h('polyline', { points: '14 2 14 8 20 8' })) },
+      { key: 'sample', subKey: 'main', label: '样机寄样台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }), h('circle', { cx: '12', cy: '10', r: '3' })) },
       { key: 'order', subKey: 'logistics', label: '物流运单跟踪', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 7h-9M14 17H5M17 17h2M17 7h2M7 17H5M7 7H5M20 14h-9' })) },
       { key: 'order', subKey: 'bill', label: '物流费用对账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '12', y1: '1', x2: '12', y2: '23' }), h('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })) },
       { key: 'order', subKey: 'imei', label: 'IMEI出库核对', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' })) }
@@ -510,6 +815,15 @@ function handleGroupClick(group) {
 }
 
 function handleSalesNavClick(groupKey, pageKey, subKey) {
+  if (hasUnsavedConfig.value && currentPage.value === 'settings') {
+    const confirmLeave = confirm('当前存储配置未保存，是否保存后再切换页面？')
+    if (!confirmLeave) return
+  }
+  currentPage.value = pageKey
+  currentSubPage.value = subKey
+}
+
+function handleSettingsNavClick(pageKey, subKey) {
   if (hasUnsavedConfig.value && currentPage.value === 'settings') {
     const confirmLeave = confirm('当前存储配置未保存，是否保存后再切换页面？')
     if (!confirmLeave) return
@@ -611,11 +925,27 @@ function handleLoginSuccess() {
 }
 
 async function handleLocalModeChange(enabled) {
+  try {
+    await ElMessageBox.confirm(
+      enabled 
+        ? '切换到本地模式后，所有数据读写仅走浏览器本地存储，不会同步到云端。确定要切换吗？'
+        : '切换到云端模式后，将从 Supabase 拉取最新数据，本地未同步的数据可能被覆盖。确定要切换吗？',
+      '模式切换确认',
+      {
+        confirmButtonText: '确定切换',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+  
   if (enabled) {
     toggleLocalMode(true)
     setLocalMode(true)
     clearTempConfig()
-    alert('已切换到本地模式，所有数据读写仅走浏览器本地存储')
+    ElMessage.success('已切换到本地模式，所有数据读写仅走浏览器本地存储')
     return
   }
 
@@ -623,7 +953,7 @@ async function handleLocalModeChange(enabled) {
     toggleLocalMode(false)
     setLocalMode(false)
     await syncAllFromSupabase()
-    alert('已切换到云端模式，默认读写Supabase，IndexedDB做离线兜底')
+    ElMessage.success('已切换到云端模式，默认读写 Supabase')
     return
   }
 
@@ -636,9 +966,9 @@ async function handleLocalModeChange(enabled) {
       toggleLocalMode(false)
       setLocalMode(false)
       await syncAllFromSupabase()
-      alert('已切换到云端模式，自动使用已保存的配置连接')
+      ElMessage.success('已切换到云端模式，自动使用已保存的配置连接')
     } else {
-      alert('已保存的配置连接失败，请重新填写')
+      ElMessage.error('已保存的配置连接失败，请重新填写')
       showSupabaseConfigDialog.value = true
     }
   } else {
@@ -922,12 +1252,47 @@ html, body, #app {
   height: 20px;
 }
 
+.local-mode-section {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .local-mode-switch {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 8px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mode-label {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.sync-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: center;
+}
+
+.sync-table-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.sync-table-list .el-checkbox {
+  margin-right: 0;
 }
 
 .main-content {

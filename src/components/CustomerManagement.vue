@@ -91,102 +91,37 @@
             </el-select>
             <el-date-picker v-model="followupDate" type="date" placeholder="跟进日期" />
             <el-button type="primary" @click="handleAddFollowup">新增记录</el-button>
+            <el-button @click="openFollowupPreview">导出Excel</el-button>
           </div>
-          <el-table :data="filteredFollowups" border stripe>
-            <el-table-column prop="id" label="记录ID" width="80" />
-            <el-table-column prop="customerName" label="客户姓名" />
-            <el-table-column prop="followupDate" label="跟进日期" />
-            <el-table-column prop="content" label="跟进内容" />
-            <el-table-column prop="result" label="跟进结果" />
-            <el-table-column prop="nextFollowup" label="下次跟进" />
-            <el-table-column label="操作" width="150">
+          <el-table :data="filteredFollowups" border stripe header-cell-class-name="table-header">
+            <el-table-column prop="id" label="记录ID" width="100" />
+            <el-table-column prop="customerName" label="客户姓名" width="120">
+              <template #default="{ row }">
+                <el-tooltip :content="row.customerName" placement="top">
+                  <span>{{ row.customerName }}</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column prop="followupDate" label="跟进日期" width="110" />
+            <el-table-column prop="content" label="跟进内容" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="content-cell">{{ row.content }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="跟进结果" width="110">
+              <template #default="{ row }">
+                <el-tag :type="getResultTagType(row.result)" size="small">{{ row.result || '-' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="nextFollowup" label="下次跟进" width="110">
+              <template #default="{ row }">
+                <span :class="{ 'overdue-date': isOverdueDate(row.nextFollowup) }">{{ row.nextFollowup || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
               <template #default="{ row }">
                 <el-button size="small" @click="handleEditFollowup(row)">编辑</el-button>
                 <el-button size="small" type="danger" @click="handleDeleteFollowup(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-      
-      <el-tab-pane label="样机寄样申请" name="sample">
-        <div class="tab-content">
-          <div class="search-bar">
-            <el-select v-model="sampleCustomerId" placeholder="选择客户" style="width: 200px">
-              <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-            <el-select v-model="sampleStatus" placeholder="物流状态" clearable style="width: 120px">
-              <el-option label="待寄出" value="pending" />
-              <el-option label="运输中" value="in_transit" />
-              <el-option label="已签收" value="delivered" />
-              <el-option label="异常" value="exception" />
-            </el-select>
-            <el-select v-model="sampleSortBy" style="width: 120px">
-              <el-option label="按ID排序" value="id" />
-              <el-option label="按寄件时间" value="sendDate" />
-              <el-option label="按客户姓名" value="customerName" />
-            </el-select>
-            <el-button @click="toggleSampleSort" size="small">
-              {{ sampleSortOrder === 'asc' ? '↑' : '↓' }}
-            </el-button>
-            <el-button type="primary" @click="handleAddSample">新增寄样</el-button>
-            <el-button @click="previewSamples">预览</el-button>
-            <el-button @click="exportSamples">导出Excel</el-button>
-          </div>
-          <el-table :data="filteredSamples" border stripe>
-            <el-table-column prop="id" label="寄样ID" width="80" />
-            <el-table-column prop="customerName" label="客户姓名" />
-            <el-table-column prop="model" label="机型型号" />
-            <el-table-column prop="sampleQty" label="样品数量" width="100" />
-            <el-table-column prop="logisticsCompany" label="物流商" width="80" />
-            <el-table-column prop="logisticsNo" label="运单号" />
-            <el-table-column prop="sendDate" label="寄出日期">
-              <template #default="{ row }">
-                {{ formatDate(row.sendDate) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="expectedSignDate" label="预计签收日">
-              <template #default="{ row }">
-                {{ formatDate(row.expectedSignDate) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="status" label="物流状态">
-              <template #default="{ row }">
-                <el-tag :type="getStatusTagType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="freightAmount" label="运费金额" />
-            <el-table-column prop="settled" label="是否结清">
-              <template #default="{ row }">
-                <el-tag :type="row.settled ? 'success' : 'danger'">{{ row.settled ? '已结清' : '未结清' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="remark" label="备注" width="150">
-              <template #default="{ row }">
-                <span v-if="row.remark" :title="row.remark" class="remark-text">{{ row.remark.slice(0, 20) }}{{ row.remark.length > 20 ? '...' : '' }}</span>
-                <span v-else class="no-data">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="附件" width="100">
-              <template #default="{ row }">
-                <div v-if="row.attachments && row.attachments.length > 0" class="attachment-list">
-                  <el-button 
-                    v-for="(file, index) in row.attachments.slice(0, 3)" 
-                    :key="index" 
-                    size="small" 
-                    icon="Picture"
-                    @click="previewSampleAttachment(file)"
-                    :title="file.name"
-                  />
-                  <span v-if="row.attachments.length > 3" class="more-attachments">+{{ row.attachments.length - 3 }}</span>
-                </div>
-                <span v-else class="no-data">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150">
-              <template #default="{ row }">
-                <el-button size="small" @click="handleEditSample(row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="handleDeleteSample(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -214,6 +149,7 @@
           </div>
           <div class="group-actions-bar">
             <el-button type="primary" @click="showAddGroupDialog = true">新增分组</el-button>
+            <el-button @click="exportGroups">导出Excel</el-button>
           </div>
           <el-dialog v-model="showAddGroupDialog" :title="isEditingGroup ? '编辑客户分组' : '新增客户分组'" width="400px">
             <el-form :model="newGroupForm" label-width="80px">
@@ -427,130 +363,27 @@
         <el-button type="primary" @click="confirmFollowup">确定</el-button>
       </template>
     </el-dialog>
-    
-    <el-dialog v-model="showSampleDialog" :title="isEditingSample ? '编辑寄样申请' : '新增寄样申请'" width="500px">
-      <el-form :model="sampleForm" label-width="100px">
-        <el-form-item label="寄样ID">
-          <el-input v-model="sampleForm.id" placeholder="自动生成，可自定义" />
-        </el-form-item>
-        <el-form-item label="关联客户">
-          <el-select v-model="sampleForm.customerId">
-            <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="机型型号">
-          <el-select v-model="sampleForm.model" filterable>
-            <el-option v-for="m in store.productModels" :key="m.id" :label="m.name" :value="m.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="样品数量">
-          <el-input-number v-model="sampleForm.sampleQty" :min="1" />
-        </el-form-item>
-        <el-form-item label="物流商">
-          <el-select v-model="sampleForm.logisticsCompany" filterable allow-create @create="handleCreateLogisticsCompany">
-            <el-option v-for="lc in logisticsCompanies" :key="lc" :label="lc" :value="lc" />
-            <el-option label="其他" value="其他" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="运单号">
-          <el-input v-model="sampleForm.logisticsNo" />
-        </el-form-item>
-        <el-form-item label="寄出日期">
-          <el-date-picker v-model="sampleForm.sendDate" type="date" />
-        </el-form-item>
-        <el-form-item label="预计签收日">
-          <el-date-picker v-model="sampleForm.expectedSignDate" type="date" />
-        </el-form-item>
-        <el-form-item label="物流状态">
-          <el-select v-model="sampleForm.status">
-            <el-option label="待寄出" value="pending" />
-            <el-option label="运输中" value="in_transit" />
-            <el-option label="已签收" value="delivered" />
-            <el-option label="异常" value="exception" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="运费金额">
-          <el-input-number v-model="sampleForm.freightAmount" :min="0" />
-        </el-form-item>
-        <el-form-item label="标签">
-          <el-select v-model="sampleForm.tags" multiple style="width: 100%">
-            <el-option v-for="tag in store.tags" :key="tag.id" :label="tag.label" :value="tag.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="sampleForm.remark" type="textarea" :rows="3" placeholder="可填写样品类型、特殊要求等信息" />
-        </el-form-item>
-        <el-form-item label="附件">
-          <div class="sample-attachments">
-            <el-upload
-              :on-change="handleAttachmentChange"
-              :on-remove="handleAttachmentRemove"
-              :file-list="sampleForm.attachments"
-              list-type="picture-card"
-              accept="image/jpeg,image/png,application/pdf"
-              :auto-upload="false"
-            >
-              <el-icon><Plus /></el-icon>
-            </el-upload>
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="sampleForm.settled">已结清</el-checkbox>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSampleDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmSample">确定</el-button>
-      </template>
-    </el-dialog>
-    
-    <el-dialog v-model="showPreviewDialog" title="寄样台账预览" width="900px" :close-on-click-modal="false">
-      <div class="preview-container">
-        <div class="preview-header">
-          <h2>寄样台账</h2>
-          <p>{{ new Date().toLocaleDateString('zh-CN') }}</p>
-        </div>
-        <div class="preview-table">
-          <table>
-            <thead>
-              <tr>
-                <th>寄样ID</th>
-                <th>客户姓名</th>
-                <th>机型型号</th>
-                <th>样品数量</th>
-                <th>物流商</th>
-                <th>运单号</th>
-                <th>寄出日期</th>
-                <th>预计签收日</th>
-                <th>物流状态</th>
-                <th>运费金额</th>
-                <th>是否结清</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="s in filteredSamples" :key="s.id">
-                <td>{{ s.id }}</td>
-                <td>{{ s.customerName }}</td>
-                <td>{{ s.model }}</td>
-                <td>{{ s.sampleQty }}</td>
-                <td>{{ s.logisticsCompany || '-' }}</td>
-                <td>{{ s.logisticsNo || '-' }}</td>
-                <td>{{ s.sendDate || '-' }}</td>
-                <td>{{ s.expectedSignDate || '-' }}</td>
-                <td>{{ getStatusLabel(s.status) }}</td>
-                <td>{{ s.freightAmount || '-' }}</td>
-                <td>{{ s.settled ? '已结清' : '未结清' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="preview-summary">
-          <span>共 {{ filteredSamples.length }} 条记录</span>
-        </div>
+
+    <el-dialog
+      v-model="showFollowupPreview"
+      title="跟进记录导出预览"
+      width="720px"
+      @close="showFollowupPreview = false"
+    >
+      <div class="preview-info">
+        <span>共 <strong>{{ filteredFollowups.length }}</strong> 条记录将被导出</span>
       </div>
+      <el-table :data="followupPreviewData" border max-height="400" size="small">
+        <el-table-column prop="id" label="记录ID" width="100" />
+        <el-table-column prop="customerName" label="客户姓名" width="120" />
+        <el-table-column prop="followupDate" label="跟进日期" width="110" />
+        <el-table-column prop="content" label="跟进内容" :show-overflow-tooltip="true" />
+        <el-table-column prop="result" label="跟进结果" width="100" />
+        <el-table-column prop="nextFollowup" label="下次跟进" width="110" />
+      </el-table>
       <template #footer>
-        <el-button @click="showPreviewDialog = false">关闭</el-button>
-        <el-button type="primary" @click="exportSamples">导出Excel</el-button>
+        <el-button @click="showFollowupPreview = false">取消</el-button>
+        <el-button type="primary" @click="confirmFollowupExport">确认导出</el-button>
       </template>
     </el-dialog>
   </div>
@@ -559,32 +392,41 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { store, addCustomer, updateCustomer, deleteCustomer, addSampleDelivery, updateSampleDelivery, deleteSampleDelivery, addLogisticsCompany, generateId, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase } from '../store.js'
+import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase } from '../supabase.js'
-import { Document, ZoomIn } from '@element-plus/icons-vue'
+import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
 
-const activeTab = ref('main')
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'main'
+  }
+})
+
+const activeTab = ref(props.currentSubPage || 'main')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 
 const searchKeyword = ref('')
 const filterGroup = ref('')
 const followupCustomerId = ref('')
 const followupDate = ref('')
-const sampleCustomerId = ref('')
-const sampleStatus = ref('')
 
 const showCustomerDialog = ref(false)
 const showFollowupDialog = ref(false)
-const showSampleDialog = ref(false)
 const showAddGroupDialog = ref(false)
-const showPreviewDialog = ref(false)
 const showCustomerPreviewDialog = ref(false)
 const showAttachmentDialog = ref(false)
+const showFollowupPreview = ref(false)
 
 const isEditingCustomer = ref(false)
 const isEditingFollowup = ref(false)
-const isEditingSample = ref(false)
 
 const currentAttachments = ref([])
 const isLocalhost = computed(() => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -683,21 +525,44 @@ const followupForm = reactive({
   nextFollowup: ''
 })
 
-const sampleForm = reactive({
-  id: '',
-  customerId: '',
-  customerName: '',
-  model: '',
-  sampleQty: 1,
-  logisticsCompany: '顺丰',
-  logisticsNo: '',
-  sendDate: new Date().toISOString().split('T')[0],
-  expectedSignDate: '',
-  status: 'pending',
-  freightAmount: 0,
-  settled: false,
-  tags: []
+const customerOptions = computed(() => {
+  const names = store.customers.map(c => c.name).filter(Boolean)
+  if (names.length === 0) {
+    return ['Hans', 'Ethan', 'Jason', 'Ralph', 'Mr.Krish']
+  }
+  return [...new Set(names)]
 })
+
+const modelOptions = computed(() => {
+  const models = store.productModels.map(m => m.name).filter(Boolean)
+  if (models.length === 0) {
+    return ['E7 Elite', 'NE75', 'NE76', 'MTK6500']
+  }
+  return [...new Set(models)]
+})
+
+const logisticsOptions = [
+  '顺丰速运',
+  '圆通速递',
+  '中通快递',
+  '申通快递',
+  '韵达快递',
+  'EMS',
+  '邮政小包',
+  '德邦物流',
+  '京东物流',
+  '百世汇通',
+  'DHL',
+  'FedEx',
+  'UPS',
+  'TNT',
+  '安骏物流',
+  '燕文物流',
+  '云途物流',
+  '递四方',
+  '万邑通',
+  '速卖通'
+]
 
 const newGroupForm = reactive({ name: '' })
 const isEditingGroup = ref(false)
@@ -729,47 +594,8 @@ const filteredFollowups = computed(() => {
   })
 })
 
-const sampleSortBy = ref('id')
-const sampleSortOrder = ref('desc')
-
-const filteredSamples = computed(() => {
-  const samples = store.sampleDeliveries.filter(s => {
-    const matchCustomer = !sampleCustomerId.value || s.customerId === sampleCustomerId.value
-    const matchStatus = !sampleStatus.value || s.status === sampleStatus.value
-    return matchCustomer && matchStatus
-  })
-  
-  return [...samples].sort((a, b) => {
-    let result = 0
-    if (sampleSortBy.value === 'id') {
-      result = a.id.localeCompare(b.id)
-    } else if (sampleSortBy.value === 'sendDate') {
-      const dateA = a.sendDate ? new Date(a.sendDate).getTime() : 0
-      const dateB = b.sendDate ? new Date(b.sendDate).getTime() : 0
-      result = dateA - dateB
-    } else if (sampleSortBy.value === 'customerName') {
-      result = (a.customerName || '').localeCompare(b.customerName || '')
-    }
-    return sampleSortOrder.value === 'desc' ? -result : result
-  })
-})
-
-function getStatusTagType(status) {
-  const types = { pending: 'info', in_transit: 'warning', delivered: 'success', exception: 'danger' }
-  return types[status] || 'info'
-}
-
-function toggleSampleSort() {
-  sampleSortOrder.value = sampleSortOrder.value === 'asc' ? 'desc' : 'asc'
-}
-
-function getStatusLabel(status) {
-  const labels = { pending: '待寄出', in_transit: '运输中', delivered: '已签收', exception: '异常' }
-  return labels[status] || status
-}
-
-function getSampleCount(customerId) {
-  return store.sampleDeliveries.filter(s => s.customerId === customerId).length
+function getSampleCount(customerName) {
+  return store.sampleDeliveries.filter(s => s.customer_name === customerName).length
 }
 
 function formatDate(dateValue) {
@@ -804,6 +630,33 @@ function handleCreateLogisticsCompany(name) {
   if (!result.success) {
     alert(result.error)
   }
+}
+
+function getResultTagType(result) {
+  const map = {
+    '已成交': 'success',
+    '有意向': 'warning',
+    '观望中': 'info',
+    '无需求': 'danger'
+  }
+  return map[result] || ''
+}
+
+function isOverdueDate(dateStr) {
+  if (!dateStr) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const target = new Date(dateStr)
+  return target < today
+}
+
+function exportGroups() {
+  const headers = ['分组名称', '客户数量', '客户列表']
+  const data = customerGroups.value.map(g => {
+    const customers = getGroupCustomers(g)
+    return [g, customers.length, customers.map(c => c.name).join('、')]
+  })
+  exportToExcel('客户分组配置', headers, data)
 }
 
 function getGroupCustomerCount(group) {
@@ -1021,122 +874,6 @@ function confirmFollowup() {
   showFollowupDialog.value = false
 }
 
-function handleAddSample() {
-  isEditingSample.value = false
-  Object.assign(sampleForm, {
-    id: '',
-    customerId: '',
-    customerName: '',
-    model: '',
-    sampleQty: 1,
-    logisticsCompany: '顺丰',
-    logisticsNo: '',
-    sendDate: new Date().toISOString().split('T')[0],
-    expectedSignDate: '',
-    status: 'pending',
-    freightAmount: 0,
-    settled: false,
-    tags: [],
-    remark: '',
-    attachments: []
-  })
-  showSampleDialog.value = true
-}
-
-function handleEditSample(row) {
-  isEditingSample.value = true
-  Object.assign(sampleForm, {
-    id: row.id,
-    customerId: row.customerId,
-    customerName: row.customerName,
-    model: row.model,
-    sampleQty: row.sampleQty,
-    logisticsCompany: row.logisticsCompany,
-    logisticsNo: row.logisticsNo,
-    sendDate: row.sendDate,
-    expectedSignDate: row.expectedSignDate,
-    status: row.status,
-    freightAmount: row.freightAmount,
-    settled: row.settled,
-    tags: row.tags || [],
-    remark: row.remark || '',
-    attachments: row.attachments || []
-  })
-  showSampleDialog.value = true
-}
-
-async function handleDeleteSample(row) {
-  ElMessageBox.confirm(
-    '确定删除该寄样记录吗？此操作不可恢复。',
-    '确认删除',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  ).then(async () => {
-    await deleteSampleDelivery(row.id)
-  }).catch(() => {})
-}
-
-async function confirmSample() {
-  if (!sampleForm.customerId || !sampleForm.model) {
-    alert('请填写关联客户和机型型号')
-    return
-  }
-  const customer = store.customers.find(c => c.id === sampleForm.customerId)
-  sampleForm.customerName = customer ? customer.name : ''
-  
-  if (!sampleForm.id.trim()) {
-    sampleForm.id = generateId('SD')
-  }
-  if (!isEditingSample.value) {
-    const exists = store.sampleDeliveries.find(s => s.id === sampleForm.id)
-    if (exists) {
-      alert(`寄样ID "${sampleForm.id}" 已存在，请更换其他ID`)
-      return
-    }
-  }
-  
-  if (isEditingSample.value) {
-    await updateSampleDelivery(sampleForm)
-  } else {
-    await addSampleDelivery(sampleForm)
-    if (customer) {
-      customer.sampleCount = (customer.sampleCount || 0) + 1
-    }
-  }
-  showSampleDialog.value = false
-}
-
-function handleAttachmentChange(file, fileList) {
-  const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf']
-  if (!allowedTypes.includes(file.raw.type)) {
-    alert('附件格式不支持，请上传 jpg/png/pdf 文件')
-    return false
-  }
-  const maxSize = 5 * 1024 * 1024
-  if (file.raw.size > maxSize) {
-    alert('附件大小超过5MB限制')
-    return false
-  }
-  sampleForm.attachments = fileList
-}
-
-function handleAttachmentRemove(file, fileList) {
-  sampleForm.attachments = fileList
-}
-
-function previewSampleAttachment(file) {
-  if (file.url) {
-    window.open(file.url, '_blank')
-  } else if (file.response && file.response.url) {
-    window.open(file.response.url, '_blank')
-  } else {
-    alert('暂无预览链接')
-  }
-}
-
 async function handleAddGroup() {
   const name = newGroupForm.name.trim()
   if (!name) {
@@ -1197,10 +934,6 @@ async function handleDeleteGroup(groupName) {
   }).catch(() => {})
 }
 
-function previewSamples() {
-  showPreviewDialog.value = true
-}
-
 function exportCustomers() {
   const headers = ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at']
   const data = filteredCustomers.value.map(c => [
@@ -1209,16 +942,25 @@ function exportCustomers() {
   exportToExcel('客户台账', headers, data)
 }
 
-function exportSamples() {
-  const headers = ['寄样ID', '客户姓名', '机型型号', '样品数量', '物流商', '运单号', '寄出日期', '预计签收日', '物流状态', '运费金额', '是否结清', '备注', '附件']
-  const data = filteredSamples.value.map(s => [
-    s.id, s.customerName, s.model, s.sampleQty, s.logisticsCompany || '-', s.logisticsNo || '-', 
-    s.sendDate || '-', s.expectedSignDate || '-', getStatusLabel(s.status), 
-    s.freightAmount || '-', s.settled ? '已结清' : '未结清',
-    s.remark || '-',
-    s.attachments && s.attachments.length > 0 ? s.attachments.map(f => f.name).join(', ') : '-'
+const followupPreviewData = computed(() => {
+  return filteredFollowups.value.slice(0, 50)
+})
+
+function openFollowupPreview() {
+  if (filteredFollowups.value.length === 0) {
+    ElMessageBox.alert('暂无跟进记录可导出', '提示')
+    return
+  }
+  showFollowupPreview.value = true
+}
+
+function confirmFollowupExport() {
+  const headers = ['记录ID', '客户姓名', '跟进日期', '跟进内容', '跟进结果', '下次跟进']
+  const data = filteredFollowups.value.map(f => [
+    f.id, f.customerName || '', f.followupDate || '', f.content || '', f.result || '', f.nextFollowup || ''
   ])
-  exportToExcel('寄样台账', headers, data)
+  exportToExcel('客户跟进记录', headers, data)
+  showFollowupPreview.value = false
 }
 
 
@@ -1485,6 +1227,16 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   min-width: auto;
 }
 
+.preview-info {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 4px;
+  color: #409eff;
+  font-size: 14px;
+}
+
 .no-attachment {
   color: #c0c4cc;
   font-size: 13px;
@@ -1536,5 +1288,35 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 .no-path {
   color: #c0c4cc;
   font-size: 12px;
+}
+
+.content-cell {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.overdue-date {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.table-header th {
+  background: #f5f7fa !important;
+  color: #303133;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.el-table td {
+  font-size: 13px;
+}
+</style>
+
+<style>
+.high-z-dropdown {
+  z-index: 9999 !important;
 }
 </style>

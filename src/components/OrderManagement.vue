@@ -1,7 +1,7 @@
 <template>
   <div class="order-management">
     <el-tabs v-model="activeTab" type="card">
-      <el-tab-pane label="订单总台账" name="main">
+      <el-tab-pane label="大货订单台账" name="main">
         <div class="tab-content">
           <div class="search-bar">
             <el-input v-model="searchKeyword" placeholder="搜索订单号/客户" clearable style="width: 200px" />
@@ -13,11 +13,22 @@
               <el-option label="已签收" value="signed" />
               <el-option label="已完成" value="completed" />
             </el-select>
+            <el-select v-model="filterPaymentStatus" placeholder="尾款状态" clearable style="width: 120px">
+              <el-option label="未结清" :value="false" />
+              <el-option label="已结清" :value="true" />
+            </el-select>
+            <el-select v-model="filterCurrency" placeholder="币种" clearable style="width: 100px">
+              <el-option label="USD" value="USD" />
+              <el-option label="CNY" value="CNY" />
+              <el-option label="EUR" value="EUR" />
+            </el-select>
             <el-button type="primary" @click="handleAddOrder">新增订单</el-button>
-            <el-button @click="showOrderPreview">预览</el-button>
+            <el-button @click="showOrderPreview">预览全部</el-button>
             <el-button @click="exportOrders">导出Excel</el-button>
+            <el-button type="danger" :disabled="orderSelection.length === 0" @click="batchDeleteOrders">批量删除 ({{ orderSelection.length }})</el-button>
           </div>
-          <el-table :data="filteredOrders" border stripe>
+          <el-table :data="filteredOrders" border stripe header-cell-class-name="table-header" @selection-change="val => orderSelection = val">
+            <el-table-column type="selection" width="45" />
             <el-table-column prop="id" label="订单ID" width="120">
               <template #default="{ row }">
                 <el-tooltip :content="row.id" placement="top">
@@ -25,27 +36,48 @@
                 </el-tooltip>
               </template>
             </el-table-column>
-            <el-table-column prop="customerName" label="客户姓名" />
-            <el-table-column prop="model" label="机型" />
-            <el-table-column prop="qty" label="出货数量" width="100" />
-            <el-table-column prop="bookingDate" label="订舱日期" />
-            <el-table-column prop="logisticsNo" label="物流单号" />
-            <el-table-column prop="status" label="出货状态">
+            <el-table-column prop="customerName" label="客户姓名" width="120" />
+            <el-table-column prop="model" label="机型" width="100" />
+            <el-table-column prop="qty" label="出货数量" width="90" align="center" />
+            <el-table-column prop="bookingDate" label="订舱日期" width="110">
               <template #default="{ row }">
-                <el-tag :type="getOrderStatusTagType(row.status)">{{ getOrderStatusLabel(row.status) }}</el-tag>
+                {{ row.bookingDate || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="amount" label="订单金额" />
-            <el-table-column prop="balanceSettled" label="尾款状态">
+            <el-table-column prop="logisticsNo" label="物流单号" width="140" />
+            <el-table-column label="出货状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.balanceSettled ? 'success' : 'warning'">{{ row.balanceSettled ? '已结清' : '未结清' }}</el-tag>
+                <el-tag :type="getOrderStatusTagType(row.status)" size="small">{{ getOrderStatusLabel(row.status) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220">
+            <el-table-column label="订单货款" width="110" align="right">
+              <template #default="{ row }">
+                <span v-if="row.amount">{{ row.amount }}</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="大货运费" width="100" align="right">
+              <template #default="{ row }">
+                <span v-if="row.bulkFreight">{{ row.bulkFreight }}</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="币种" width="70" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.currency" size="small" type="info">{{ row.currency }}</el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="尾款状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.balanceSettled ? 'success' : 'warning'" size="small">{{ row.balanceSettled ? '已结清' : '未结清' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }">
                 <el-button size="small" @click="handleEditOrder(row)">编辑</el-button>
                 <el-button size="small" @click="previewSingleOrder(row)">预览</el-button>
-                <el-button size="small" @click="exportSingleOrder(row)">导出Excel</el-button>
+                <el-button size="small" @click="exportSingleOrder(row)">导出</el-button>
                 <el-button size="small" type="danger" @click="handleDeleteOrder(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -64,6 +96,7 @@
               <el-option label="异常" value="exception" />
             </el-select>
             <el-button type="primary" @click="handleAddLogistics">录入运单</el-button>
+            <el-button type="danger" :disabled="logisticsSelection.length === 0" @click="batchDeleteLogistics">批量删除 ({{ logisticsSelection.length }})</el-button>
           </div>
           <div class="logistics-stats">
             <div class="stat-card">
@@ -79,7 +112,8 @@
               <div class="stat-label">本周已签收</div>
             </div>
           </div>
-          <el-table :data="filteredLogistics" border stripe>
+          <el-table :data="filteredLogistics" border stripe @selection-change="val => logisticsSelection = val">
+            <el-table-column type="selection" width="45" />
             <el-table-column prop="id" label="运单ID" width="80" />
             <el-table-column prop="customerName" label="客户姓名" />
             <el-table-column prop="logisticsNo" label="顺丰运单号" />
@@ -242,7 +276,23 @@
           </el-select>
         </el-form-item>
         <el-form-item label="订单金额">
-          <el-input v-model="orderForm.amount" />
+          <el-input-number v-model="orderForm.amount" :min="0" :precision="2" />
+        </el-form-item>
+        <el-form-item label="币种">
+          <el-select v-model="orderForm.currency">
+            <el-option label="USD" value="USD" />
+            <el-option label="CNY" value="CNY" />
+            <el-option label="EUR" value="EUR" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="大货运费">
+          <el-input-number v-model="orderForm.bulkFreight" :min="0" :precision="2" />
+        </el-form-item>
+        <el-form-item label="订单类型">
+          <el-select v-model="orderForm.orderType">
+            <el-option label="大货订单" value="bulk_order" />
+            <el-option label="付费样品" value="paid_sample" />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="orderForm.balanceSettled">尾款已结清</el-checkbox>
@@ -469,7 +519,20 @@ import { store, addSalesOrder, updateSalesOrder, deleteSalesOrder, addLogisticsB
 import { Upload } from '@element-plus/icons-vue'
 import { exportToExcel, showExportPreview } from '../utils/excelExport.js'
 
-const activeTab = ref('main')
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'main'
+  }
+})
+
+const activeTab = ref(props.currentSubPage || 'main')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   await syncAllFromSupabase()
@@ -478,6 +541,8 @@ onMounted(async () => {
 const searchKeyword = ref('')
 const filterMonth = ref('')
 const filterStatus = ref('')
+const filterPaymentStatus = ref('')
+const filterCurrency = ref('')
 const logisticsKeyword = ref('')
 const logisticsStatus = ref('')
 const billKeyword = ref('')
@@ -499,6 +564,9 @@ const isEditingOrder = ref(false)
 const isEditingLogistics = ref(false)
 const isEditingBill = ref(false)
 
+const orderSelection = ref([])
+const logisticsSelection = ref([])
+
 const orderForm = reactive({
   id: '',
   customerId: '',
@@ -508,7 +576,10 @@ const orderForm = reactive({
   bookingDate: new Date().toISOString().split('T')[0],
   logisticsNo: '',
   status: 'pending',
-  amount: '',
+  amount: 0,
+  currency: 'USD',
+  bulkFreight: 0,
+  orderType: 'bulk_order',
   balanceSettled: false
 })
 
@@ -541,19 +612,19 @@ const imeiComparison = ref([])
 
 const filteredOrders = computed(() => {
   return store.salesOrders.filter(o => {
-    const matchKeyword = !searchKeyword.value || 
+    const matchKeyword = !searchKeyword.value ||
       o.id.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
       o.customerName.toLowerCase().includes(searchKeyword.value.toLowerCase())
     const matchStatus = !filterStatus.value || o.status === filterStatus.value
+    const matchPaymentStatus = filterPaymentStatus.value === '' || o.balanceSettled === filterPaymentStatus.value
+    const matchCurrency = !filterCurrency.value || o.currency === filterCurrency.value
     let matchMonth = true
     if (filterMonth.value) {
-      const orderMonth = o.id.match(/^SO(\d{2})(\d{2})/)
-      if (orderMonth) {
-        const orderYearMonth = `20${orderMonth[1]}-${orderMonth[2]}`
-        matchMonth = orderYearMonth === filterMonth.value
+      if (o.bookingDate) {
+        matchMonth = o.bookingDate.startsWith(filterMonth.value)
       }
     }
-    return matchKeyword && matchStatus && matchMonth
+    return matchKeyword && matchStatus && matchMonth && matchPaymentStatus && matchCurrency
   })
 })
 
@@ -591,12 +662,12 @@ const unsettledTotal = computed(() => {
 })
 
 function getOrderStatusTagType(status) {
-  const types = { pending: 'info', confirmed: 'warning', shipped: 'primary', signed: 'success', completed: 'success' }
+  const types = { pending: 'info', confirmed: 'warning', in_progress: 'info', shipped: 'primary', signed: 'success', completed: 'success' }
   return types[status] || 'info'
 }
 
 function getOrderStatusLabel(status) {
-  const labels = { pending: '待确认', confirmed: '已确认', shipped: '已出货', signed: '已签收', completed: '已完成' }
+  const labels = { pending: '待确认', confirmed: '已确认', in_progress: '进行中', shipped: '已出货', signed: '已签收', completed: '已完成' }
   return labels[status] || status
 }
 
@@ -639,7 +710,10 @@ function handleAddOrder() {
     bookingDate: new Date().toISOString().split('T')[0],
     logisticsNo: '',
     status: 'pending',
-    amount: '',
+    amount: 0,
+    currency: 'USD',
+    bulkFreight: 0,
+    orderType: 'bulk_order',
     balanceSettled: false
   })
   showOrderDialog.value = true
@@ -652,8 +726,18 @@ function handleEditOrder(row) {
 }
 
 function handleDeleteOrder(row) {
-  if (confirm(`确定删除订单 ${row.id} 吗？`)) {
+  if (confirm(`确定删除这条大货订单？订单运费、货款数据会同步删除\n订单ID: ${row.id}`)) {
     deleteSalesOrder(row.id)
+  }
+}
+
+function batchDeleteOrders() {
+  if (orderSelection.value.length === 0) return
+  if (confirm(`确定批量删除 ${orderSelection.value.length} 条大货订单？此操作不可恢复`)) {
+    orderSelection.value.forEach(row => {
+      deleteSalesOrder(row.id)
+    })
+    orderSelection.value = []
   }
 }
 
@@ -697,6 +781,16 @@ function handleEditLogistics(row) {
 function handleDeleteLogistics(row) {
   if (confirm('确定删除该运单吗？')) {
     deleteSampleDelivery(row.id)
+  }
+}
+
+function batchDeleteLogistics() {
+  if (logisticsSelection.value.length === 0) return
+  if (confirm(`确定批量删除 ${logisticsSelection.value.length} 条运单？此操作不可恢复`)) {
+    logisticsSelection.value.forEach(row => {
+      deleteSampleDelivery(row.id)
+    })
+    logisticsSelection.value = []
   }
 }
 
@@ -829,6 +923,9 @@ function showOrderPreview() {
     model: o.model,
     qty: o.qty,
     amount: o.amount,
+    currency: o.currency || 'USD',
+    bulkFreight: o.bulkFreight || 0,
+    orderType: o.orderType === 'paid_sample' ? '付费样品' : '大货订单',
     balanceSettled: o.balanceSettled
   }))
   showPreviewDialog.value = true
@@ -868,9 +965,12 @@ function exportOrders() {
     model: o.model,
     qty: o.qty,
     amount: o.amount,
+    currency: o.currency || 'USD',
+    bulkFreight: o.bulkFreight || 0,
+    orderType: o.orderType === 'paid_sample' ? '付费样品' : '大货订单',
     balanceSettled: o.balanceSettled
   }))
-  exportToExcel('订单台账', [], orders, { template: 'order' })
+  exportToExcel('大货订单台账', [], orders, { template: 'order' })
 }
 
 function previewSingleOrder(order) {
@@ -883,6 +983,9 @@ function previewSingleOrder(order) {
     model: order.model,
     qty: order.qty,
     amount: order.amount,
+    currency: order.currency || 'USD',
+    bulkFreight: order.bulkFreight || 0,
+    orderType: order.orderType === 'paid_sample' ? '付费样品' : '大货订单',
     balanceSettled: order.balanceSettled
   }]
   showPreviewDialog.value = true
@@ -898,6 +1001,9 @@ function exportSingleOrder(order) {
     model: order.model,
     qty: order.qty,
     amount: order.amount,
+    currency: order.currency || 'USD',
+    bulkFreight: order.bulkFreight || 0,
+    orderType: order.orderType === 'paid_sample' ? '付费样品' : '大货订单',
     balanceSettled: order.balanceSettled
   }], { template: 'order' })
 }
@@ -1211,5 +1317,47 @@ watch(() => store.logisticsBills, () => {}, { deep: true })
   height: 2px;
   background: #333;
   margin: 20px 0;
+}
+
+.order-management .el-table th.table-header {
+  background-color: #f5f7fa !important;
+  color: #303133 !important;
+  font-weight: 700;
+  text-align: center;
+}
+
+.order-management .el-table--striped .el-table__body tr.el-table__row--striped td {
+  background-color: #fafafa !important;
+}
+
+.order-management .el-table__body tr:hover > td {
+  background-color: #ecf5ff !important;
+}
+
+.order-management .search-bar .el-button + .el-button {
+  margin-left: 6px;
+}
+
+.order-management .search-bar .el-button:not(.el-button--primary):not(.el-button--danger) {
+  border-color: #dcdfe6;
+  color: #606266;
+  background-color: #fff;
+}
+
+.order-management .search-bar .el-button:not(.el-button--primary):not(.el-button--danger):hover {
+  border-color: #409eff;
+  color: #409eff;
+  background-color: #ecf5ff;
+}
+
+.order-management .el-button--small {
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-right: 6px;
+}
+
+.order-management .el-button--danger.el-button--small {
+  background-color: #f56c6c;
+  border-color: #f56c6c;
 }
 </style>

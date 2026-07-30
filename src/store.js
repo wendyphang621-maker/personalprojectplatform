@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 const AUTH_KEY = 'project_workbench_auth'
 const USER_PREFIX = 'project_workbench_user_'
-const DATA_VERSION = 'v9'
+const DATA_VERSION = 'v12'
 
 const defaultUser = {
   name: '张三',
@@ -87,37 +87,37 @@ const defaultData = {
   ],
   
   sampleDeliveries: [
-    { id: 'sd1', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', sampleQty: 2, logisticsCompany: '顺丰', freightForwarder: '华通物流', logisticsNo: 'SF1234567890', sendDate: '2024-03-01', expectedSignDate: '2024-03-08', status: 'delivered', freightAmount: 280, settled: true },
-    { id: 'sd2', customerId: 'c2', customerName: 'Ethan', model: 'NE75', sampleQty: 1, logisticsCompany: 'DHL', freightForwarder: '环球货代', logisticsNo: 'SF1234567891', sendDate: '2024-03-05', expectedSignDate: '2024-03-12', status: 'in_transit', freightAmount: 320, settled: false },
-    { id: 'sd3', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', sampleQty: 3, logisticsCompany: 'UPS', freightForwarder: '华通物流', logisticsNo: 'SF1234567892', sendDate: '2024-03-08', expectedSignDate: '2024-03-15', status: 'pending', freightAmount: 450, settled: false },
-    { id: 'sd4', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', sampleQty: 5, logisticsCompany: 'DHL', freightForwarder: '环球货代', logisticsNo: 'DH202607001', sendDate: '2026-07-02', expectedSignDate: '2026-07-09', status: 'delivered', freightAmount: 580, settled: true },
-    { id: 'sd5', customerId: 'c2', customerName: 'Ethan', model: 'NE76', sampleQty: 3, logisticsCompany: 'FedEx', freightForwarder: '速运达', logisticsNo: 'FE202607001', sendDate: '2026-07-05', expectedSignDate: '2026-07-12', status: 'in_transit', freightAmount: 420, settled: false },
-    { id: 'sd6', customerId: 'c3', customerName: 'Jason', model: 'E7 Elite', sampleQty: 2, logisticsCompany: '顺丰', freightForwarder: '华通物流', logisticsNo: 'SF202607001', sendDate: '2026-07-08', expectedSignDate: '2026-07-15', status: 'pending', freightAmount: 350, settled: false },
-    { id: 'sd7', customerId: 'c5', customerName: 'Mr.Krish', model: 'NE75', sampleQty: 4, logisticsCompany: 'DHL', freightForwarder: '环球货代', logisticsNo: 'DH202607002', sendDate: '2026-07-10', expectedSignDate: '2026-07-17', status: 'delivered', freightAmount: 680, settled: true },
-    { id: 'sd8', customerId: 'c1', customerName: 'Hans', model: 'NE76', sampleQty: 1, logisticsCompany: 'UPS', freightForwarder: '华通物流', logisticsNo: 'UP202607001', sendDate: '2026-07-12', expectedSignDate: '2026-07-19', status: 'in_transit', freightAmount: 380, settled: false },
-    { id: 'sd9', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', sampleQty: 6, logisticsCompany: '顺丰', freightForwarder: '速运达', logisticsNo: 'SF202607002', sendDate: '2026-07-15', expectedSignDate: '2026-07-22', status: 'pending', freightAmount: 720, settled: false },
-    { id: 'sd10', customerId: 'c2', customerName: 'Ethan', model: 'E7 Elite', sampleQty: 3, logisticsCompany: 'DHL', freightForwarder: '环球货代', logisticsNo: 'DH202607003', sendDate: '2026-07-01', expectedSignDate: '2026-07-08', status: 'delivered', freightAmount: 450, settled: true },
-    { id: 'sd11', customerId: 'c3', customerName: 'Jason', model: 'NE76', sampleQty: 2, logisticsCompany: 'FedEx', freightForwarder: '速运达', logisticsNo: 'FE202607002', sendDate: '2026-07-03', expectedSignDate: '2026-07-10', status: 'delivered', freightAmount: 320, settled: true },
-    { id: 'sd12', customerId: 'c4', customerName: 'Ralph', model: 'E7 Elite', sampleQty: 5, logisticsCompany: '顺丰', freightForwarder: '华通物流', logisticsNo: 'SF202607003', sendDate: '2026-07-06', expectedSignDate: '2026-07-13', status: 'delivered', freightAmount: 560, settled: false },
-    { id: 'sd13', customerId: 'c5', customerName: 'Mr.Krish', model: 'MTK6500', sampleQty: 4, logisticsCompany: 'UPS', freightForwarder: '环球货代', logisticsNo: 'UP202607002', sendDate: '2026-07-09', expectedSignDate: '2026-07-16', status: 'in_transit', freightAmount: 480, settled: false },
-    { id: 'sd14', customerId: 'c1', customerName: 'Hans', model: 'NE75', sampleQty: 2, logisticsCompany: 'DHL', freightForwarder: '速运达', logisticsNo: 'DH202607004', sendDate: '2026-07-11', expectedSignDate: '2026-07-18', status: 'pending', freightAmount: 290, settled: false },
-    { id: 'sd15', customerId: 'c2', customerName: 'Ethan', model: 'MTK6500', sampleQty: 6, logisticsCompany: 'FedEx', freightForwarder: '华通物流', logisticsNo: 'FE202607003', sendDate: '2026-07-14', expectedSignDate: '2026-07-21', status: 'pending', freightAmount: 780, settled: false }
+    { id: '2026070101', customer_name: 'Hans', model: 'E7 Elite', area: '德国', logistics: 'SF', tracking_no: 'SF1234567890', send_date: '2024-03-01', remark: '长期合作客户' },
+    { id: '2026070102', customer_name: 'Ethan', model: 'NE75', area: '美国', logistics: 'DHL', tracking_no: 'SF1234567891', send_date: '2024-03-05', remark: '' },
+    { id: '2026070103', customer_name: 'Ralph', model: 'MTK6500', area: '英国', logistics: 'DHL', tracking_no: 'SF1234567892', send_date: '2024-03-08', remark: '' },
+    { id: '2026070201', customer_name: 'Hans', model: 'E7 Elite', area: '德国', logistics: 'DHL', tracking_no: 'DH202607001', send_date: '2026-07-02', remark: '' },
+    { id: '2026070501', customer_name: 'Ethan', model: 'NE76', area: '美国', logistics: 'FedEx', tracking_no: 'FE202607001', send_date: '2026-07-05', remark: '' },
+    { id: '2026070801', customer_name: 'Jason', model: 'E7 Elite', area: '中国', logistics: 'SF', tracking_no: 'SF202607001', send_date: '2026-07-08', remark: '国内寄送' },
+    { id: '2026071001', customer_name: 'Mr.Krish', model: 'NE75', area: '印度', logistics: 'DHL', tracking_no: 'DH202607002', send_date: '2026-07-10', remark: '' },
+    { id: '2026071201', customer_name: 'Hans', model: 'NE76', area: '德国', logistics: 'DHL', tracking_no: 'DH202607005', send_date: '2026-07-12', remark: '' },
+    { id: '2026071501', customer_name: 'Ralph', model: 'MTK6500', area: '英国', logistics: 'SF', tracking_no: 'SF202607002', send_date: '2026-07-15', remark: '' },
+    { id: '2026070104', customer_name: 'Ethan', model: 'E7 Elite', area: '美国', logistics: 'DHL', tracking_no: 'DH202607003', send_date: '2026-07-01', remark: '' },
+    { id: '2026070301', customer_name: 'Jason', model: 'NE76', area: '中国', logistics: 'FedEx', tracking_no: 'FE202607002', send_date: '2026-07-03', remark: '' },
+    { id: '2026070601', customer_name: 'Ralph', model: 'E7 Elite', area: '英国', logistics: 'SF', tracking_no: 'SF202607003', send_date: '2026-07-06', remark: '' },
+    { id: '2026070901', customer_name: 'Mr.Krish', model: 'MTK6500', area: '印度', logistics: 'DHL', tracking_no: 'DH202607006', send_date: '2026-07-09', remark: '待签收' },
+    { id: '2026071101', customer_name: 'Hans', model: 'NE75', area: '德国', logistics: 'DHL', tracking_no: 'DH202607004', send_date: '2026-07-11', remark: '待签收' },
+    { id: '2026071401', customer_name: 'Ethan', model: 'MTK6500', area: '美国', logistics: 'FedEx', tracking_no: 'FE202607003', send_date: '2026-07-14', remark: '待签收' }
   ],
   
   salesOrders: [
-    { id: 'so1', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', qty: 100, bookingDate: '2024-03-10', logisticsNo: 'SF1234567893', status: 'in_progress', amount: 50000, balanceSettled: false },
-    { id: 'so2', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', qty: 200, bookingDate: '2024-03-05', logisticsNo: 'SF1234567894', status: 'shipped', amount: 80000, balanceSettled: true },
-    { id: 'SO26070001', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', qty: 150, bookingDate: '2026-07-03', logisticsNo: 'DH202607001', status: 'shipped', amount: 75000, balanceSettled: true },
-    { id: 'SO26070002', customerId: 'c2', customerName: 'Ethan', model: 'NE76', qty: 200, bookingDate: '2026-07-06', logisticsNo: 'FE202607001', status: 'in_progress', amount: 100000, balanceSettled: false },
-    { id: 'SO26070003', customerId: 'c3', customerName: 'Jason', model: 'E7 Elite', qty: 80, bookingDate: '2026-07-09', logisticsNo: 'SF202607001', status: 'shipped', amount: 40000, balanceSettled: true },
-    { id: 'SO26070004', customerId: 'c5', customerName: 'Mr.Krish', model: 'NE75', qty: 120, bookingDate: '2026-07-11', logisticsNo: 'DH202607002', status: 'in_progress', amount: 60000, balanceSettled: false },
-    { id: 'SO26070005', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', qty: 250, bookingDate: '2026-07-14', logisticsNo: 'UP202607001', status: 'pending', amount: 100000, balanceSettled: false },
-    { id: 'SO26070006', customerId: 'c1', customerName: 'Hans', model: 'NE75', qty: 100, bookingDate: '2026-07-01', logisticsNo: 'SF202607004', status: 'shipped', amount: 50000, balanceSettled: true },
-    { id: 'SO26070007', customerId: 'c2', customerName: 'Ethan', model: 'E7 Elite', qty: 180, bookingDate: '2026-07-04', logisticsNo: 'DH202607005', status: 'shipped', amount: 90000, balanceSettled: true },
-    { id: 'SO26070008', customerId: 'c3', customerName: 'Jason', model: 'NE76', qty: 150, bookingDate: '2026-07-07', logisticsNo: 'FE202607004', status: 'in_progress', amount: 75000, balanceSettled: false },
-    { id: 'SO26070009', customerId: 'c4', customerName: 'Ralph', model: 'E7 Elite', qty: 200, bookingDate: '2026-07-10', logisticsNo: 'SF202607005', status: 'in_progress', amount: 100000, balanceSettled: false },
-    { id: 'SO26070010', customerId: 'c5', customerName: 'Mr.Krish', model: 'MTK6500', qty: 160, bookingDate: '2026-07-13', logisticsNo: 'UP202607003', status: 'pending', amount: 64000, balanceSettled: false },
-    { id: 'SO26070006', customerId: 'c1', customerName: 'Hans', model: 'NE76', qty: 90, bookingDate: '2026-07-16', logisticsNo: 'SF202607002', status: 'shipped', amount: 45000, balanceSettled: true }
+    { id: 'so1', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', qty: 100, bookingDate: '2024-03-10', logisticsNo: 'SF1234567893', status: 'in_progress', amount: 50000, currency: 'USD', bulkFreight: 200, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'so2', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', qty: 200, bookingDate: '2024-03-05', logisticsNo: 'SF1234567894', status: 'shipped', amount: 80000, currency: 'USD', bulkFreight: 350, orderType: 'bulk_order', balanceSettled: true },
+    { id: 'SO26070001', customerId: 'c1', customerName: 'Hans', model: 'E7 Elite', qty: 150, bookingDate: '2026-07-03', logisticsNo: 'DH202607001', status: 'shipped', amount: 75000, currency: 'USD', bulkFreight: 280, orderType: 'bulk_order', balanceSettled: true },
+    { id: 'SO26070002', customerId: 'c2', customerName: 'Ethan', model: 'NE76', qty: 200, bookingDate: '2026-07-06', logisticsNo: 'FE202607001', status: 'in_progress', amount: 100000, currency: 'USD', bulkFreight: 320, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070003', customerId: 'c3', customerName: 'Jason', model: 'E7 Elite', qty: 80, bookingDate: '2026-07-09', logisticsNo: 'SF202607001', status: 'shipped', amount: 40000, currency: 'CNY', bulkFreight: 1500, orderType: 'bulk_order', balanceSettled: true },
+    { id: 'SO26070004', customerId: 'c5', customerName: 'Mr.Krish', model: 'NE75', qty: 120, bookingDate: '2026-07-11', logisticsNo: 'DH202607002', status: 'in_progress', amount: 60000, currency: 'USD', bulkFreight: 250, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070005', customerId: 'c4', customerName: 'Ralph', model: 'MTK6500', qty: 250, bookingDate: '2026-07-14', logisticsNo: 'UP202607001', status: 'pending', amount: 100000, currency: 'USD', bulkFreight: 400, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070006', customerId: 'c1', customerName: 'Hans', model: 'NE75', qty: 100, bookingDate: '2026-07-01', logisticsNo: 'SF202607004', status: 'shipped', amount: 50000, currency: 'USD', bulkFreight: 220, orderType: 'bulk_order', balanceSettled: true },
+    { id: 'SO26070007', customerId: 'c2', customerName: 'Ethan', model: 'E7 Elite', qty: 180, bookingDate: '2026-07-04', logisticsNo: 'DH202607005', status: 'shipped', amount: 90000, currency: 'USD', bulkFreight: 310, orderType: 'bulk_order', balanceSettled: true },
+    { id: 'SO26070008', customerId: 'c3', customerName: 'Jason', model: 'NE76', qty: 150, bookingDate: '2026-07-07', logisticsNo: 'FE202607004', status: 'in_progress', amount: 75000, currency: 'USD', bulkFreight: 290, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070009', customerId: 'c4', customerName: 'Ralph', model: 'E7 Elite', qty: 200, bookingDate: '2026-07-10', logisticsNo: 'SF202607005', status: 'in_progress', amount: 100000, currency: 'USD', bulkFreight: 380, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070010', customerId: 'c5', customerName: 'Mr.Krish', model: 'MTK6500', qty: 160, bookingDate: '2026-07-13', logisticsNo: 'UP202607003', status: 'pending', amount: 64000, currency: 'USD', bulkFreight: 270, orderType: 'bulk_order', balanceSettled: false },
+    { id: 'SO26070011', customerId: 'c1', customerName: 'Hans', model: 'NE76', qty: 90, bookingDate: '2026-07-16', logisticsNo: 'SF202607002', status: 'shipped', amount: 45000, currency: 'USD', bulkFreight: 190, orderType: 'paid_sample', balanceSettled: true }
   ],
   
   logisticsBills: [
@@ -134,10 +134,10 @@ const defaultData = {
   ],
   
   productModels: [
-    { id: 'pm1', name: 'E7 Elite', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: 'CE,CB,SASO', renderImagePath: '', supplierId: 'sup1' },
-    { id: 'pm2', name: 'NE75', chip: 'MTK6771', screen: '6.2英寸 LCD', certifications: 'CE,CB', renderImagePath: '', supplierId: 'sup2' },
-    { id: 'pm3', name: 'NE76', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: 'CE,SASO', renderImagePath: '', supplierId: 'sup1' },
-    { id: 'pm4', name: 'MTK6500', chip: 'MTK6580', screen: '5.5英寸 LCD', certifications: 'CE', renderImagePath: '', supplierId: 'sup3' }
+    { id: 'pm1', name: 'E7 Elite', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'CB', 'SASO'], renderImagePath: '', supplierId: 'sup1' },
+    { id: 'pm2', name: 'NE75', chip: 'MTK6771', screen: '6.2英寸 LCD', certifications: ['CE', 'CB'], renderImagePath: '', supplierId: 'sup2' },
+    { id: 'pm3', name: 'NE76', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'SASO'], renderImagePath: '', supplierId: 'sup1' },
+    { id: 'pm4', name: 'MTK6500', chip: 'MTK6580', screen: '5.5英寸 LCD', certifications: ['CE'], renderImagePath: '', supplierId: 'sup3' }
   ],
   
   certRecords: [
@@ -341,13 +341,71 @@ function loadUserData(userId) {
         }
       }
       
-      return result
+      return migrateSampleDeliveries(result)
     }
     return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
   } catch {
     localStorage.removeItem(USER_PREFIX + userId)
     return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
   }
+}
+
+function migrateSampleDeliveries(data) {
+  if (!data.sampleDeliveries || !Array.isArray(data.sampleDeliveries)) return data
+  
+  data.sampleDeliveries = data.sampleDeliveries.map(sd => {
+    const needsMigration = sd.customerName !== undefined || sd.sampleQty !== undefined || sd.qty !== undefined
+    if (needsMigration) {
+      return {
+        id: sd.id,
+        customer_name: sd.customer_name || sd.customerName || '',
+        model: sd.model || '',
+        area: sd.area || '',
+        logistics: sd.logistics || sd.logisticsCompany || '',
+        tracking_no: sd.tracking_no || sd.tracking_number || sd.logisticsNo || '',
+        send_date: sd.send_date || sd.sendDate || '',
+        remark: sd.remark || ''
+      }
+    }
+    return sd
+  })
+  
+  if (data.productModels && Array.isArray(data.productModels)) {
+    const isCorrupted = data.productModels.some(m => {
+      return !m.chip || !m.certifications
+    })
+    
+    if (isCorrupted) {
+      data.productModels = defaultData.productModels
+      console.log('[数据修复] productModels 数据异常，已重置为默认值')
+    } else {
+      data.productModels = data.productModels.map(m => {
+        if (typeof m.certifications === 'string') {
+          return {
+            ...m,
+            certifications: m.certifications ? m.certifications.split(',') : []
+          }
+        }
+        if (!Array.isArray(m.certifications)) {
+          return { ...m, certifications: [] }
+        }
+        return m
+      })
+    }
+  }
+  
+  if (data.customers && Array.isArray(data.customers)) {
+    const customerFields = ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address']
+    data.customers = data.customers.map(c => {
+      const cleaned = {}
+      customerFields.forEach(f => {
+        if (c[f] !== undefined) cleaned[f] = c[f]
+      })
+      return { ...cleaned, attachments: [], localMaterialPath: '', notes: c.notes || '' }
+    })
+  }
+  
+  return data
 }
 
 function saveUserData(userId, data) {
@@ -358,8 +416,37 @@ function saveUserData(userId, data) {
   }
 }
 
+function saveToLocalStorage() {
+  if (!currentUserId) return
+  try {
+    const data = {
+      user: store.user,
+      customers: store.customers,
+      productModels: store.productModels,
+      sampleDeliveries: store.sampleDeliveries,
+      sampleRecords: store.sampleRecords,
+      followups: store.followups,
+      customerGroups: store.customerGroups,
+      tasks: store.tasks,
+      dailyTodos: store.dailyTodos,
+      orderProducts: store.orderProducts,
+      certRecords: store.certRecords,
+      suppliers: store.suppliers,
+      logisticsBills: store.logisticsBills,
+      dailyReports: store.dailyReports,
+      materialRecords: store.materialRecords,
+      projects: store.projects,
+      stages: store.stages,
+      dataVersion: DATA_VERSION
+    }
+    localStorage.setItem(USER_PREFIX + currentUserId, JSON.stringify(data))
+  } catch (e) {
+    console.error('Local storage save failed:', e)
+  }
+}
+
 export const authStore = reactive(loadAuth())
-export const store = reactive({ user: defaultUser, ...defaultData })
+export const store = reactive(migrateSampleDeliveries({ user: defaultUser, ...defaultData }))
 
 let currentUserId = null
 
@@ -647,65 +734,91 @@ export async function deleteCustomer(customerId) {
   }
 }
 
-export async function addSampleDelivery(data) {
-  const delivery = {
-    id: data.id || generateId('sd'),
-    customerId: data.customerId || '',
-    customerName: data.customerName || '',
-    model: data.model || '',
-    sampleQty: data.sampleQty || 0,
-    logisticsCompany: data.logisticsCompany || '',
-    logisticsNo: data.logisticsNo || '',
-    sendDate: data.sendDate || '',
-    expectedSignDate: data.expectedSignDate || '',
-    status: data.status || 'pending',
-    freightAmount: data.freightAmount || 0,
-    settled: data.settled || false,
-    tags: data.tags || [],
-    remark: data.remark || '',
-    attachments: data.attachments || [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-  store.sampleDeliveries.push(delivery)
-  
-  try {
-    const { syncToSupabase } = await import('./supabase.js')
-    await syncToSupabase('sample_deliveries', delivery)
-    console.log('[同步] 寄样记录已保存到后端')
-  } catch (error) {
-    console.error('[同步] 寄样记录保存失败:', error)
-  }
-  
-  return delivery
+const ALLOWED_SAMPLE_FIELDS = ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'remark']
+
+function filterSampleFields(data) {
+  const filtered = {}
+  ALLOWED_SAMPLE_FIELDS.forEach(field => {
+    if (data[field] !== undefined) {
+      filtered[field] = data[field]
+    }
+  })
+  return filtered
 }
 
-export async function updateSampleDelivery(delivery) {
-  const idx = store.sampleDeliveries.findIndex(d => d.id === delivery.id)
+export async function addSampleDelivery(data) {
+  const delivery = {
+    id: data.id,
+    customer_name: data.customer_name || '',
+    model: data.model || '',
+    area: data.area || '',
+    logistics: data.logistics || '',
+    tracking_no: data.tracking_no || '',
+    send_date: data.send_date || '',
+    remark: data.remark || ''
+  }
+  
+  store.sampleDeliveries.push(delivery)
+  saveToLocalStorage()
+  
+  let syncError = null
+  try {
+    const { syncToSupabase } = await import('./supabase.js')
+    const submitData = filterSampleFields(delivery)
+    const result = await syncToSupabase('sample_deliveries', submitData)
+    if (result.success) {
+      console.log('[同步] 寄样记录已同步到云端')
+    } else {
+      syncError = result.error || '云端同步失败'
+      console.warn('[同步] 寄样记录云端同步失败，已保存本地:', syncError)
+    }
+  } catch (error) {
+    syncError = error.message || '云端同步异常'
+    console.warn('[同步] 寄样记录云端同步失败，已保存本地:', syncError)
+  }
+  
+  return { ...delivery, syncError }
+}
+
+export async function updateSampleDelivery(id, data) {
+  const idx = store.sampleDeliveries.findIndex(d => d.id === id)
   if (idx > -1) {
-    store.sampleDeliveries[idx] = { ...delivery, updatedAt: new Date().toISOString() }
+    const filteredData = filterSampleFields(data)
+    const updatedData = { ...store.sampleDeliveries[idx], ...filteredData }
+    store.sampleDeliveries[idx] = updatedData
+    saveToLocalStorage()
     
+    let syncError = null
     try {
       const { syncToSupabase } = await import('./supabase.js')
-      await syncToSupabase('sample_deliveries', store.sampleDeliveries[idx])
-      console.log('[同步] 寄样记录已更新到后端')
+      const result = await syncToSupabase('sample_deliveries', updatedData)
+      if (result.success) {
+        console.log('[同步] 寄样记录已同步到云端')
+      } else {
+        syncError = result.error || '云端同步失败'
+        console.warn('[同步] 寄样记录云端同步失败，已保存本地:', syncError)
+      }
     } catch (error) {
-      console.error('[同步] 寄样记录更新失败:', error)
+      syncError = error.message || '云端同步异常'
+      console.warn('[同步] 寄样记录云端同步失败，已保存本地:', syncError)
     }
+    return { success: true, syncError }
   }
+  return { success: false, error: '记录不存在' }
 }
 
 export async function deleteSampleDelivery(deliveryId) {
   const idx = store.sampleDeliveries.findIndex(d => d.id === deliveryId)
   if (idx > -1) {
     store.sampleDeliveries.splice(idx, 1)
+    saveToLocalStorage()
     
     try {
       const { deleteFromSupabase } = await import('./supabase.js')
       await deleteFromSupabase('sample_deliveries', deliveryId)
-      console.log('[同步] 寄样记录已删除')
+      console.log('[同步] 寄样记录已从云端删除')
     } catch (error) {
-      console.error('[同步] 寄样记录删除失败:', error)
+      console.warn('[同步] 寄样记录云端删除失败，已删除本地:', error.message)
     }
   }
 }
@@ -1363,7 +1476,7 @@ export function generateOrderNumber() {
 
 export function addSalesOrder(data) {
   const order = {
-    id: generateOrderNumber(),
+    id: data.id || generateOrderNumber(),
     customerId: data.customerId || '',
     customerName: data.customerName || '',
     model: data.model || '',
@@ -1371,10 +1484,14 @@ export function addSalesOrder(data) {
     bookingDate: data.bookingDate || '',
     logisticsNo: data.logisticsNo || '',
     status: data.status || 'pending',
-    amount: data.amount || '',
+    amount: data.amount || 0,
+    currency: data.currency || 'USD',
+    bulkFreight: data.bulkFreight || 0,
+    orderType: data.orderType || 'bulk_order',
     balanceSettled: data.balanceSettled || false
   }
   store.salesOrders.push(order)
+  saveToLocalStorage()
   return order
 }
 

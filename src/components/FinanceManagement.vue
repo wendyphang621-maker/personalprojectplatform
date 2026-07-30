@@ -261,7 +261,20 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 
-const activeTab = ref('freight')
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'freight'
+  }
+})
+
+const activeTab = ref(props.currentSubPage || 'freight')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   await syncAllFromSupabase()

@@ -639,6 +639,13 @@ import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
 import { sanitizePathSegment } from '../utils/common.js'
 
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'todo'
+  }
+})
+
 const excelFileInput = ref(null)
 
 const showImportResultDialog = ref(false)
@@ -649,7 +656,13 @@ const importResult = reactive({
   failedRecords: []
 })
 
-const activeTab = ref('todo')
+const activeTab = ref(props.currentSubPage || 'todo')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 const weekDate = ref(new Date().toISOString().split('T')[0])
 const letterKeyword = ref('')
 const mapKeyword = ref('')

@@ -157,9 +157,6 @@
                   <el-option label="FedEx" value="FedEx" />
                 </el-select>
               </el-form-item>
-              <el-form-item label="头像">
-                <el-button type="primary" @click="changeAvatar">上传头像</el-button>
-              </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="saveUserInfo">保存用户信息</el-button>
               </el-form-item>
@@ -168,15 +165,17 @@
           
           <div class="setting-section">
             <h3>修改密码</h3>
-            <el-form :model="passwordForm" label-width="120px">
-              <el-form-item label="旧密码">
-                <el-input v-model="passwordForm.oldPassword" type="password" placeholder="请输入旧密码" show-password />
+            <el-form :model="passwordForm" label-width="120px" :rules="passwordRules" ref="passwordFormRef">
+              <el-form-item label="旧密码" prop="oldPassword">
+                <el-input v-model="passwordForm.oldPassword" type="password" placeholder="请输入旧密码" show-password @input="validatePasswordForm" />
               </el-form-item>
-              <el-form-item label="新密码">
-                <el-input v-model="passwordForm.newPassword" type="password" placeholder="至少8位，包含字母和数字" show-password />
+              <el-form-item label="新密码" prop="newPassword">
+                <el-input v-model="passwordForm.newPassword" type="password" placeholder="至少6位" show-password @input="validatePasswordForm" />
+                <div v-if="passwordErrors.minLength" class="password-error">{{ passwordErrors.minLength }}</div>
               </el-form-item>
-              <el-form-item label="确认密码">
-                <el-input v-model="passwordForm.confirmPassword" type="password" placeholder="再次输入新密码" show-password />
+              <el-form-item label="确认密码" prop="confirmPassword">
+                <el-input v-model="passwordForm.confirmPassword" type="password" placeholder="再次输入新密码" show-password @input="validatePasswordForm" />
+                <div v-if="passwordErrors.match" class="password-error">{{ passwordErrors.match }}</div>
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="handleChangePassword">修改密码</el-button>
@@ -191,10 +190,19 @@
           <div class="setting-section">
             <div class="section-header">
               <h3>用户列表</h3>
-              <el-button type="primary" @click="showAddUserDialog = true">新增用户</el-button>
+              <div class="user-search-bar">
+                <el-input 
+                  v-model="userSearchKeyword" 
+                  placeholder="搜索用户名/岗位" 
+                  style="width: 200px; margin-right: 10px;"
+                  clearable
+                />
+                <el-button type="primary" @click="handleAddUser">新增用户</el-button>
+              </div>
             </div>
-            <el-table :data="authUsers" border style="width: 100%">
-              <el-table-column prop="username" label="用户名" />
+            <el-table :data="filteredAuthUsers" border style="width: 100%">
+              <el-table-column prop="username" label="登录账号" />
+              <el-table-column prop="name" label="昵称" />
               <el-table-column prop="role" label="角色">
                 <template #default="{ row }">
                   <el-tag :type="row.role === 'admin' ? 'danger' : 'success'">
@@ -204,10 +212,20 @@
               </el-table-column>
               <el-table-column prop="position" label="岗位" />
               <el-table-column prop="createdAt" label="创建时间" />
-              <el-table-column label="操作" width="200">
+              <el-table-column label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'disabled' ? 'info' : 'success'">
+                    {{ row.status === 'disabled' ? '已禁用' : '已启用' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="250">
                 <template #default="{ row }">
                   <el-button size="small" @click="handleEditUser(row)">编辑</el-button>
                   <el-button size="small" @click="handleResetPassword(row)">重置密码</el-button>
+                  <el-button size="small" @click="handleToggleStatus(row)">
+                    {{ row.status === 'disabled' ? '启用' : '禁用' }}
+                  </el-button>
                   <el-button size="small" type="danger" @click="handleDeleteUser(row)">删除</el-button>
                 </template>
               </el-table-column>
@@ -605,13 +623,21 @@
       </template>
     </el-dialog>
     
-    <el-dialog v-model="showAddUserDialog" :title="isEditingUser ? '编辑用户' : '新增用户'" width="400px">
-      <el-form :model="userEditForm" label-width="100px">
-        <el-form-item label="用户名">
-          <el-input v-model="userEditForm.username" />
+    <el-dialog v-model="showAddUserDialog" :title="isEditingUser ? '编辑用户' : '新增用户'" width="450px">
+      <el-form :model="userEditForm" label-width="100px" ref="userFormRef">
+        <el-form-item label="登录账号" prop="username" :rules="[{ required: true, message: '请输入登录账号' }]">
+          <el-input v-model="userEditForm.username" placeholder="输入邮箱作为登录账号" @input="validateUserForm" />
         </el-form-item>
-        <el-form-item label="密码" v-if="!isEditingUser">
-          <el-input v-model="userEditForm.password" type="password" placeholder="至少8位，包含字母和数字" show-password />
+        <el-form-item label="昵称" prop="name">
+          <el-input v-model="userEditForm.name" placeholder="用户昵称" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password" v-if="!isEditingUser" :rules="[{ required: true, message: '请输入密码' }]">
+          <el-input v-model="userEditForm.password" type="password" placeholder="至少6位" show-password @input="validateUserForm" />
+          <div v-if="userFormErrors.minLength" class="password-error">{{ userFormErrors.minLength }}</div>
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword" v-if="!isEditingUser" :rules="[{ required: true, message: '请确认密码' }]">
+          <el-input v-model="userEditForm.confirmPassword" type="password" placeholder="再次输入密码" show-password @input="validateUserForm" />
+          <div v-if="userFormErrors.match" class="password-error">{{ userFormErrors.match }}</div>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="userEditForm.role">
@@ -702,24 +728,80 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
-import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword } from '../supabase.js'
+import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, getLocalModeStatus, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword, createAccount, listAccounts, updateAccount, deleteAccount, resetOtherUserPassword, logRequestDestination } from '../supabase.js'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['config-change'])
+const props = defineProps({
+  currentSubPage: {
+    type: String,
+    default: 'user'
+  }
+})
 
-const activeTab = ref('supabase')
+const activeTab = ref(props.currentSubPage || 'user')
+
+watch(() => props.currentSubPage, (newVal) => {
+  if (newVal && activeTab.value !== newVal) {
+    activeTab.value = newVal
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   await syncAllFromSupabase()
+  if (store.user.role === 'admin') {
+    await loadAccounts()
+  }
 })
+
 const showImportDialog = ref(false)
 const showAddUserDialog = ref(false)
 const showConflictDialog = ref(false)
 const isEditingUser = ref(false)
 const editingUserId = ref('')
 const conflictResult = ref(null)
+const userSearchKeyword = ref('')
+const passwordFormRef = ref(null)
+const userFormRef = ref(null)
+const accountList = ref([])
 
-const authUsers = computed(() => authStore.users)
+const passwordErrors = reactive({
+  minLength: '',
+  match: ''
+})
+
+const userFormErrors = reactive({
+  minLength: '',
+  match: ''
+})
+
+const passwordRules = {
+  oldPassword: [{ required: true, message: '请输入旧密码' }],
+  newPassword: [
+    { required: true, message: '请输入新密码' },
+    { min: 6, message: '密码长度至少6位' }
+  ],
+  confirmPassword: [{ required: true, message: '请确认新密码' }]
+}
+
+const authUsers = computed(() => {
+  if (accountList.value.length > 0) {
+    return accountList.value
+  }
+  return authStore.users
+})
+
+const filteredAuthUsers = computed(() => {
+  if (!userSearchKeyword.value) {
+    return authUsers.value
+  }
+  const keyword = userSearchKeyword.value.toLowerCase()
+  return authUsers.value.filter(u => 
+    (u.username && u.username.toLowerCase().includes(keyword)) ||
+    (u.name && u.name.toLowerCase().includes(keyword)) ||
+    (u.position && u.position.toLowerCase().includes(keyword))
+  )
+})
 
 const passwordForm = reactive({
   oldPassword: '',
@@ -730,8 +812,11 @@ const passwordForm = reactive({
 const userEditForm = reactive({
   username: '',
   password: '',
+  confirmPassword: '',
+  name: '',
   role: 'sales_assistant',
-  position: '销售助理'
+  position: '销售助理',
+  status: 'active'
 })
 
 const supabaseConnected = ref(false)
@@ -1142,7 +1227,272 @@ const dataSize = computed(() => {
 })
 
 function changeAvatar() {
-  alert('头像上传功能开发中')
+  alert('头像功能已移除，不再需要存储桶配置')
+}
+
+async function loadAccounts() {
+  try {
+    const result = await listAccounts()
+    if (result.success && result.users) {
+      accountList.value = result.users.map(u => ({
+        id: u.id,
+        username: u.email,
+        name: u.user_metadata?.display_name || '',
+        role: u.user_metadata?.role || 'sales_assistant',
+        position: u.user_metadata?.position || '销售助理',
+        createdAt: new Date(u.created_at).toISOString().split('T')[0],
+        status: u.banned_until ? 'disabled' : 'active'
+      }))
+    }
+  } catch (error) {
+    console.error('[账号管理] 加载账号失败:', error)
+    console.log('[账号管理] 当前本地模式开关:', getLocalModeStatus() ? '开启' : '关闭')
+  }
+}
+
+function validatePasswordForm() {
+  passwordErrors.minLength = ''
+  passwordErrors.match = ''
+  
+  if (passwordForm.newPassword && passwordForm.newPassword.length < 6) {
+    passwordErrors.minLength = '新密码长度至少6位'
+  }
+  
+  if (passwordForm.newPassword && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword) {
+    passwordErrors.match = '两次输入的密码不一致'
+  }
+}
+
+function validateUserForm() {
+  userFormErrors.minLength = ''
+  userFormErrors.match = ''
+  
+  if (!isEditingUser.value) {
+    if (userEditForm.password && userEditForm.password.length < 6) {
+      userFormErrors.minLength = '密码长度至少6位'
+    }
+    
+    if (userEditForm.password && userEditForm.confirmPassword && userEditForm.password !== userEditForm.confirmPassword) {
+      userFormErrors.match = '两次输入的密码不一致'
+    }
+  }
+}
+
+async function handleChangePassword() {
+  validatePasswordForm()
+  
+  if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+    alert('请填写所有密码字段')
+    return
+  }
+  
+  if (passwordForm.newPassword.length < 6) {
+    alert('新密码至少6位')
+    return
+  }
+  
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    alert('新密码和确认密码不一致')
+    return
+  }
+  
+  try {
+    const isCloud = !getLocalModeStatus()
+    logRequestDestination('密码修改', isCloud)
+    
+    const result = await updatePassword(passwordForm.oldPassword, passwordForm.newPassword)
+    if (result.success) {
+      alert('密码修改成功！即将退出登录，请使用新密码重新登录...')
+      passwordForm.oldPassword = ''
+      passwordForm.newPassword = ''
+      passwordForm.confirmPassword = ''
+      setTimeout(() => {
+        localStorage.removeItem('auth_user')
+        sessionStorage.clear()
+        location.href = '/'
+      }, 2000)
+    } else {
+      alert(result.error || '修改失败，请重试')
+    }
+  } catch (error) {
+    console.error('[密码修改] 错误:', error)
+    console.log('[密码修改] 当前本地模式开关:', getLocalModeStatus() ? '开启' : '关闭')
+    alert('密码修改失败：' + (error.message || '请检查网络或联系管理员'))
+  }
+}
+
+function handleAddUser() {
+  isEditingUser.value = false
+  editingUserId.value = ''
+  userEditForm.username = ''
+  userEditForm.password = ''
+  userEditForm.confirmPassword = ''
+  userEditForm.name = ''
+  userEditForm.role = 'sales_assistant'
+  userEditForm.position = '销售助理'
+  userEditForm.status = 'active'
+  userFormErrors.minLength = ''
+  userFormErrors.match = ''
+  showAddUserDialog.value = true
+}
+
+function handleEditUser(user) {
+  isEditingUser.value = true
+  editingUserId.value = user.id
+  userEditForm.username = user.username
+  userEditForm.name = user.name || ''
+  userEditForm.role = user.role
+  userEditForm.position = user.position
+  userEditForm.status = user.status
+  showAddUserDialog.value = true
+}
+
+async function handleResetPassword(user) {
+  if (confirm(`确定要重置用户 "${user.username}" 的密码吗？\n\n新密码将设置为默认值 "Admin@123"`)) {
+    try {
+      const isCloud = !getLocalModeStatus()
+      logRequestDestination('重置密码', isCloud)
+      
+      const result = await resetOtherUserPassword(user.id, 'Admin@123')
+      if (result.success) {
+        alert('密码重置成功')
+      } else {
+        alert('重置失败：' + result.error)
+      }
+    } catch (error) {
+      console.error('[重置密码] 错误:', error)
+      alert('密码重置失败')
+    }
+  }
+}
+
+async function handleToggleStatus(user) {
+  const action = user.status === 'disabled' ? '启用' : '禁用'
+  if (confirm(`确定要${action}用户 "${user.username}" 吗？`)) {
+    try {
+      const isCloud = !getLocalModeStatus()
+      logRequestDestination('账号状态变更', isCloud)
+      
+      if (user.status === 'disabled') {
+        const result = await updateAccount(user.id, { ban_duration: 'none' })
+        if (result.success) {
+          alert('账号已启用')
+          await loadAccounts()
+        } else {
+          alert('操作失败：' + result.error)
+        }
+      } else {
+        const result = await updateAccount(user.id, { ban_duration: '87600h' })
+        if (result.success) {
+          alert('账号已禁用')
+          await loadAccounts()
+        } else {
+          alert('操作失败：' + result.error)
+        }
+      }
+    } catch (error) {
+      console.error('[账号状态变更] 错误:', error)
+      alert('操作失败')
+    }
+  }
+}
+
+async function handleDeleteUser(user) {
+  if (confirm(`确定要删除用户 "${user.username}" 吗？此操作不可恢复！`)) {
+    try {
+      const isCloud = !getLocalModeStatus()
+      logRequestDestination('删除账号', isCloud)
+      
+      const result = await deleteAccount(user.id)
+      if (result.success) {
+        alert('删除成功')
+        await loadAccounts()
+      } else {
+        alert('删除失败：' + result.error)
+      }
+    } catch (error) {
+      console.error('[删除账号] 错误:', error)
+      alert('删除失败')
+    }
+  }
+}
+
+function closeUserDialog() {
+  showAddUserDialog.value = false
+  isEditingUser.value = false
+  editingUserId.value = ''
+  userEditForm.username = ''
+  userEditForm.password = ''
+  userEditForm.confirmPassword = ''
+  userEditForm.name = ''
+  userEditForm.role = 'sales_assistant'
+  userEditForm.position = '销售助理'
+  userFormErrors.minLength = ''
+  userFormErrors.match = ''
+}
+
+async function saveUser() {
+  validateUserForm()
+  
+  if (!userEditForm.username) {
+    alert('请填写登录账号')
+    return
+  }
+  
+  if (!isEditingUser.value) {
+    if (!userEditForm.password) {
+      alert('请填写密码')
+      return
+    }
+    if (userEditForm.password.length < 6) {
+      alert('密码至少6位')
+      return
+    }
+    if (userEditForm.password !== userEditForm.confirmPassword) {
+      alert('两次密码不一致')
+      return
+    }
+  }
+  
+  try {
+    const isCloud = !getLocalModeStatus()
+    logRequestDestination(isEditingUser.value ? '更新账号' : '新增账号', isCloud)
+    
+    if (!isEditingUser.value) {
+      const result = await createAccount(
+        userEditForm.username,
+        userEditForm.password,
+        userEditForm.name,
+        userEditForm.position
+      )
+      if (result.success) {
+        alert('账号创建成功')
+        closeUserDialog()
+        await loadAccounts()
+      } else {
+        alert('创建失败：' + result.error)
+      }
+    } else {
+      const result = await updateAccount(editingUserId.value, {
+        email: userEditForm.username,
+        user_metadata: {
+          display_name: userEditForm.name,
+          position: userEditForm.position,
+          role: userEditForm.role
+        }
+      })
+      if (result.success) {
+        alert('更新成功')
+        closeUserDialog()
+        await loadAccounts()
+      } else {
+        alert('更新失败：' + result.error)
+      }
+    }
+  } catch (error) {
+    console.error('[账号管理] 错误:', error)
+    alert('操作失败：' + (error.message || '请检查网络或联系管理员'))
+  }
 }
 
 function exportDataAsJson() {
@@ -1197,123 +1547,6 @@ function clearBrowserCache() {
   
   alert('浏览器缓存已清空，页面将刷新')
   location.reload()
-}
-
-async function handleChangePassword() {
-  if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-    alert('请填写所有密码字段')
-    return
-  }
-  
-  if (passwordForm.newPassword.length < 6) {
-    alert('新密码至少6位')
-    return
-  }
-  
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    alert('新密码和确认密码不一致')
-    return
-  }
-  
-  try {
-    const result = await updatePassword(passwordForm.oldPassword, passwordForm.newPassword)
-    if (result.success) {
-      alert('密码修改成功！即将退出登录...')
-      passwordForm.oldPassword = ''
-      passwordForm.newPassword = ''
-      passwordForm.confirmPassword = ''
-      setTimeout(() => {
-        localStorage.removeItem('auth_user')
-        sessionStorage.clear()
-        location.href = '/'
-      }, 1500)
-    } else {
-      alert(result.error || '修改失败，请重试')
-    }
-  } catch (error) {
-    console.error('[密码修改] 错误:', error)
-    alert('密码修改失败，请检查网络或联系管理员')
-  }
-}
-
-function handleEditUser(user) {
-  isEditingUser.value = true
-  editingUserId.value = user.id
-  userEditForm.username = user.username
-  userEditForm.role = user.role
-  userEditForm.position = user.position
-  showAddUserDialog.value = true
-}
-
-function handleResetPassword(user) {
-  if (confirm(`确定要重置用户 "${user.username}" 的密码吗？\n\n新密码将设置为默认值 "Admin@123"`)) {
-    const result = updateAuthUser(user.id, { password: 'Admin@123' })
-    if (result.success) {
-      alert('密码重置成功')
-    } else {
-      alert(result.error)
-    }
-  }
-}
-
-function handleDeleteUser(user) {
-  if (confirm(`确定要删除用户 "${user.username}" 吗？`)) {
-    const result = deleteAuthUser(user.id)
-    if (result.success) {
-      alert('删除成功')
-    } else {
-      alert(result.error)
-    }
-  }
-}
-
-function closeUserDialog() {
-  showAddUserDialog.value = false
-  isEditingUser.value = false
-  editingUserId.value = ''
-  userEditForm.username = ''
-  userEditForm.password = ''
-  userEditForm.role = 'sales_assistant'
-  userEditForm.position = '销售助理'
-}
-
-function saveUser() {
-  if (!userEditForm.username) {
-    alert('请填写用户名')
-    return
-  }
-  
-  if (!isEditingUser.value && !userEditForm.password) {
-    alert('请填写密码')
-    return
-  }
-  
-  if (!isEditingUser.value) {
-    const result = register(userEditForm.username, userEditForm.password, userEditForm.role, userEditForm.position)
-    if (result.success) {
-      alert('创建成功')
-      closeUserDialog()
-    } else {
-      alert(result.error)
-    }
-  } else {
-    const existingUser = authStore.users.find(u => u.username === userEditForm.username && u.id !== editingUserId.value)
-    if (existingUser) {
-      alert('用户名已存在')
-      return
-    }
-    const result = updateAuthUser(editingUserId.value, {
-      username: userEditForm.username,
-      role: userEditForm.role,
-      position: userEditForm.position
-    })
-    if (result.success) {
-      alert('更新成功')
-      closeUserDialog()
-    } else {
-      alert(result.error)
-    }
-  }
 }
 
 function exportConfig() {
@@ -1373,7 +1606,23 @@ async function resolveConflict(mode) {
   flex-direction: column;
   background: #fff;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.settings :deep(.el-tabs) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings :deep(.el-tabs__content) {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.settings :deep(.el-tab-pane) {
+  height: 100%;
 }
 
 .supabase-status {
@@ -1636,5 +1885,27 @@ async function resolveConflict(mode) {
     align-items: flex-start;
     gap: 10px;
   }
+  .user-search-bar {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+.password-error {
+  color: #f56c6c;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.user-search-bar {
+  display: flex;
+  align-items: center;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
 }
 </style>

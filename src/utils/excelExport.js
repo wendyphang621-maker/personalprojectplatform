@@ -18,6 +18,10 @@ export async function exportToExcel(sheetName, headers, data, options = {}) {
     return exportOrderTemplate(worksheet, sheetName, data)
   }
   
+  if (options.template === 'sample') {
+    return exportSampleTemplate(worksheet, sheetName, data)
+  }
+  
   if (options.template === 'bill') {
     return exportBillTemplate(worksheet, sheetName, data)
   }
@@ -306,7 +310,7 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
     worksheet.addRow([])
     rowNum++
     
-    const titleRow = worksheet.addRow(['销售订单'])
+    const titleRow = worksheet.addRow(['大货订单'])
     titleRow.font = {
       name: '微软雅黑',
       size: 20,
@@ -330,7 +334,7 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
     infoRow1.font = { name: '微软雅黑', size: 11 }
     rowNum++
     
-    const infoRow2 = worksheet.addRow(['客户名称:', order.customerName, '联系人:', '', '', '', '', ''])
+    const infoRow2 = worksheet.addRow(['客户名称:', order.customerName, '订单类型:', order.orderType || '大货订单', '', '', '', ''])
     infoRow2.font = { name: '微软雅黑', size: 11 }
     rowNum++
     
@@ -368,7 +372,7 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
     }
     rowNum += 8
     
-    const totalRow1 = worksheet.addRow(['', '', '', '', '', '合计金额:', order.amount || '', ''])
+    const totalRow1 = worksheet.addRow(['', '', '', '', '', '合计货款:', (order.amount || '') + ' ' + (order.currency || 'USD'), ''])
     totalRow1.font = { name: '微软雅黑', size: 11, bold: true }
     totalRow1.fill = {
       type: 'pattern',
@@ -378,7 +382,7 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
     totalRow1.alignment = { horizontal: 'center', vertical: 'middle' }
     rowNum++
     
-    const totalRow2 = worksheet.addRow(['', '', '', '', '尾款状态:', order.balanceSettled ? '已结清' : '未结清', '', ''])
+    const totalRow2 = worksheet.addRow(['', '', '', '', '', '大货运费:', (order.bulkFreight || 0) + ' ' + (order.currency || 'USD'), ''])
     totalRow2.font = { name: '微软雅黑', size: 11, bold: true }
     totalRow2.fill = {
       type: 'pattern',
@@ -388,6 +392,16 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
     totalRow2.alignment = { horizontal: 'center', vertical: 'middle' }
     rowNum++
     
+    const totalRow3 = worksheet.addRow(['', '', '', '', '尾款状态:', order.balanceSettled ? '已结清' : '未结清', '', ''])
+    totalRow3.font = { name: '微软雅黑', size: 11, bold: true }
+    totalRow3.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    totalRow3.alignment = { horizontal: 'center', vertical: 'middle' }
+    rowNum++
+    
     if (orderIdx < data.length - 1) {
       worksheet.addRow([''])
       rowNum++
@@ -395,6 +409,110 @@ async function exportOrderTemplate(worksheet, sheetName, data) {
   }
   
   const widths = [6, 15, 15, 8, 8, 12, 12, 15]
+  widths.forEach((w, i) => {
+    worksheet.getColumn(i + 1).width = w
+    worksheet.getColumn(i + 1).alignment = { vertical: 'middle' }
+  })
+  
+  const buffer = await worksheet.workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportSampleTemplate(worksheet, sheetName, data) {
+  let rowNum = 1
+  
+  for (let sampleIdx = 0; sampleIdx < data.length; sampleIdx++) {
+    const sample = data[sampleIdx]
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const titleRow = worksheet.addRow(['样机寄样'])
+    titleRow.font = {
+      name: '微软雅黑',
+      size: 20,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    titleRow.height = 35
+    worksheet.mergeCells(`A${rowNum}:H${rowNum}`)
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const infoRow1 = worksheet.addRow(['寄样编号:', sample.id, '发货日期:', sample.send_date, '', '', '', ''])
+    infoRow1.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow2 = worksheet.addRow(['客户名称:', sample.customer_name, '机型:', sample.model, '', '', '', ''])
+    infoRow2.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow3 = worksheet.addRow(['收货地区:', sample.area || '-', '物流方式:', sample.logistics || '-', '', '', '', ''])
+    infoRow3.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const infoRow4 = worksheet.addRow(['运单号:', sample.tracking_no || '-', '备注:', sample.remark || '-', '', '', '', ''])
+    infoRow4.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    worksheet.addRow([])
+    rowNum++
+    
+    const tableHeaders = worksheet.addRow(['序号', '项目', '详情', '', '', '', '', ''])
+    tableHeaders.font = {
+      name: '微软雅黑',
+      size: 11,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    }
+    tableHeaders.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF333333' }
+    }
+    tableHeaders.alignment = { horizontal: 'center', vertical: 'middle' }
+    tableHeaders.height = 25
+    rowNum++
+    
+    const feeRow1 = worksheet.addRow(['1', '寄样编号', sample.id, '', '', '', '', ''])
+    feeRow1.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const feeRow2 = worksheet.addRow(['2', '客户名称', sample.customer_name, '', '', '', '', ''])
+    feeRow2.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    const feeRow3 = worksheet.addRow(['3', '备注', sample.remark || '-', '', '', '', '', ''])
+    feeRow3.font = { name: '微软雅黑', size: 11 }
+    rowNum++
+    
+    for (let i = 0; i < 5; i++) {
+      const emptyRow = worksheet.addRow(['', '', '', '', '', '', '', ''])
+      emptyRow.font = { name: '微软雅黑', size: 11 }
+    }
+    rowNum += 5
+    
+    if (sampleIdx < data.length - 1) {
+      worksheet.addRow([''])
+      rowNum++
+    }
+  }
+  
+  const widths = [6, 15, 20, 8, 8, 12, 12, 15]
   widths.forEach((w, i) => {
     worksheet.getColumn(i + 1).width = w
     worksheet.getColumn(i + 1).alignment = { vertical: 'middle' }
@@ -443,4 +561,65 @@ export function showExportPreview(headers, data, title = '') {
   }
   
   window.dispatchEvent(new CustomEvent('excel-preview', { detail: previewData }))
+}
+
+export function exportToCSV(headers, data, filename = 'export') {
+  const BOM = '\uFEFF'
+  
+  const escapeCSV = (value) => {
+    if (value === null || value === undefined) return ''
+    const str = String(value)
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return '"' + str.replace(/"/g, '""') + '"'
+    }
+    return str
+  }
+  
+  const headerLine = headers.map(h => escapeCSV(h)).join(',')
+  const dataLines = data.map(row => row.map(cell => escapeCSV(cell)).join(','))
+  
+  const csvContent = BOM + [headerLine, ...dataLines].join('\n')
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export function handleExportError(error, tableName) {
+  const errorMessages = {
+    table_missing: `数据表「${tableName}」不存在，请先在 Supabase 创建对应数据表`,
+    field_error: '字段名拼写错误，请检查数据库字段是否正确',
+    permission: '权限不足，请检查 RLS 策略或重新登录',
+    auth: '认证失败，请重新登录后重试',
+    config: 'Supabase 未配置，请先配置云端连接信息',
+    network: '网络连接失败，请检查网络后重试'
+  }
+  
+  let message = errorMessages[error?.type] || error?.message || '未知错误'
+  
+  console.error(`[导出错误] ${tableName}:`, error)
+  
+  return {
+    title: '导出失败',
+    message: message,
+    suggestion: getSuggestion(error?.type)
+  }
+}
+
+function getSuggestion(errorType) {
+  const suggestions = {
+    table_missing: '请在 Supabase SQL 编辑器中运行建表语句，或联系管理员创建对应表',
+    field_error: '请检查表单字段名与数据库字段是否完全匹配（使用小写下划线命名）',
+    permission: '请检查 Supabase RLS 策略是否允许当前用户读写',
+    auth: '请退出后重新登录，确保认证状态有效',
+    config: '请点击左下角切换到云端模式并配置 Supabase 连接信息',
+    network: '请检查网络连接，确保能访问 Supabase 服务'
+  }
+  return suggestions[errorType] || '请稍后重试，如果问题持续请联系管理员'
 }
