@@ -5,13 +5,27 @@
         <div class="tab-content">
           <div class="search-bar">
             <el-input v-model="searchKeyword" placeholder="搜索订单号/客户" clearable style="width: 200px" />
+            <el-input v-model="filterPO" placeholder="PO号" clearable style="width: 140px" />
+            <el-select v-model="filterCustomer" placeholder="客户" clearable style="width: 120px">
+              <el-option v-for="c in customerFilterOptions" :key="c" :label="c" :value="c" />
+            </el-select>
+            <el-select v-model="filterModel" placeholder="机型" clearable style="width: 120px">
+              <el-option v-for="m in modelFilterOptions" :key="m" :label="m" :value="m" />
+            </el-select>
             <el-date-picker v-model="filterMonth" type="month" placeholder="选择月份" format="YYYY-MM" value-format="YYYY-MM" />
-            <el-select v-model="filterStatus" placeholder="出货状态" clearable style="width: 120px">
+            <el-select v-model="filterStatus" placeholder="订单状态" clearable style="width: 120px">
               <el-option label="待确认" value="pending" />
               <el-option label="已确认" value="confirmed" />
+              <el-option label="进行中" value="in_progress" />
               <el-option label="已出货" value="shipped" />
               <el-option label="已签收" value="signed" />
               <el-option label="已完成" value="completed" />
+            </el-select>
+            <el-select v-model="filterCountry" placeholder="目的国家" clearable style="width: 120px">
+              <el-option v-for="c in countryFilterOptions" :key="c" :label="c" :value="c" />
+            </el-select>
+            <el-select v-model="filterLogisticsMethod" placeholder="物流方式" clearable style="width: 120px">
+              <el-option v-for="l in logisticsMethodFilterOptions" :key="l" :label="l" :value="l" />
             </el-select>
             <el-select v-model="filterPaymentStatus" placeholder="尾款状态" clearable style="width: 120px">
               <el-option label="未结清" :value="false" />
@@ -510,14 +524,52 @@
         <el-button type="primary" @click="confirmBillExport">导出Excel</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog 
+      v-model="showOrderRowPreview" 
+      title="订单详情" 
+      width="700px"
+      fullscreen
+      @close="showOrderRowPreview = false"
+    >
+      <el-descriptions 
+        v-if="currentOrderPreview" 
+        :column="2" 
+        border 
+        title="订单基本信息"
+      >
+        <el-descriptions-item label="订单ID">{{ currentOrderPreview.id || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="客户姓名">{{ currentOrderPreview.customerName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="机型">{{ currentOrderPreview.model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="出货数量">{{ currentOrderPreview.qty || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="订舱日期">{{ currentOrderPreview.bookingDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="出货状态">
+          <el-tag :type="getOrderStatusTagType(currentOrderPreview.status)" size="small">{{ getOrderStatusLabel(currentOrderPreview.status) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="物流单号">{{ currentOrderPreview.logisticsNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="订单类型">{{ currentOrderPreview.orderType === 'paid_sample' ? '付费样品' : '大货订单' }}</el-descriptions-item>
+        <el-descriptions-item label="订单货款">{{ currentOrderPreview.amount ? currentOrderPreview.amount + ' ' + (currentOrderPreview.currency || 'USD') : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="大货运费">{{ currentOrderPreview.bulkFreight ? currentOrderPreview.bulkFreight + ' ' + (currentOrderPreview.currency || 'USD') : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="币种">{{ currentOrderPreview.currency || 'USD' }}</el-descriptions-item>
+        <el-descriptions-item label="尾款状态">
+          <el-tag :type="currentOrderPreview.balanceSettled ? 'success' : 'warning'" size="small">{{ currentOrderPreview.balanceSettled ? '已结清' : '未结清' }}</el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="showOrderRowPreview = false">关闭</el-button>
+        <el-button type="primary" @click="printOrderRow">打印</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, addSalesOrder, updateSalesOrder, deleteSalesOrder, addLogisticsBill, updateLogisticsBill, deleteLogisticsBill, generateOrderNumber, generateMonthlyBills, syncAllFromSupabase } from '../store.js'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
-import { exportToExcel, showExportPreview } from '../utils/excelExport.js'
+import ExcelJS from 'exceljs'
+import { exportToExcel } from '../utils/excelExport.js'
 
 const props = defineProps({
   currentSubPage: {
@@ -543,6 +595,11 @@ const filterMonth = ref('')
 const filterStatus = ref('')
 const filterPaymentStatus = ref('')
 const filterCurrency = ref('')
+const filterModel = ref('')
+const filterPO = ref('')
+const filterCustomer = ref('')
+const filterCountry = ref('')
+const filterLogisticsMethod = ref('')
 const logisticsKeyword = ref('')
 const logisticsStatus = ref('')
 const billKeyword = ref('')
@@ -555,6 +612,8 @@ const showBillDialog = ref(false)
 const showTrackingDialog = ref(false)
 const showPreviewDialog = ref(false)
 const showBillPreviewDialog = ref(false)
+const showOrderRowPreview = ref(false)
+const currentOrderPreview = ref(null)
 const previewHeaders = ref([])
 const previewData = ref([])
 const previewOrders = ref([])
@@ -618,13 +677,18 @@ const filteredOrders = computed(() => {
     const matchStatus = !filterStatus.value || o.status === filterStatus.value
     const matchPaymentStatus = filterPaymentStatus.value === '' || o.balanceSettled === filterPaymentStatus.value
     const matchCurrency = !filterCurrency.value || o.currency === filterCurrency.value
+    const matchModel = !filterModel.value || o.model === filterModel.value
+    const matchPO = !filterPO.value || o.id.toLowerCase().includes(filterPO.value.toLowerCase())
+    const matchCustomer = !filterCustomer.value || o.customerName === filterCustomer.value
+    const matchCountry = !filterCountry.value || o.country === filterCountry.value
+    const matchLogistics = !filterLogisticsMethod.value || o.logisticsMethod === filterLogisticsMethod.value
     let matchMonth = true
     if (filterMonth.value) {
       if (o.bookingDate) {
         matchMonth = o.bookingDate.startsWith(filterMonth.value)
       }
     }
-    return matchKeyword && matchStatus && matchMonth && matchPaymentStatus && matchCurrency
+    return matchKeyword && matchStatus && matchMonth && matchPaymentStatus && matchCurrency && matchModel && matchPO && matchCustomer && matchCountry && matchLogistics
   })
 })
 
@@ -659,6 +723,31 @@ const unsettledTotal = computed(() => {
     .filter(b => b.status !== 'verified')
     .reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0)
     .toFixed(2)
+})
+
+const modelFilterOptions = computed(() => {
+  const models = new Set()
+  store.salesOrders.forEach(o => { if (o.model) models.add(o.model) })
+  return Array.from(models).sort()
+})
+
+const customerFilterOptions = computed(() => {
+  const names = new Set()
+  store.salesOrders.forEach(o => { if (o.customerName) names.add(o.customerName) })
+  return Array.from(names).sort()
+})
+
+const countryFilterOptions = computed(() => {
+  const countries = new Set()
+  store.salesOrders.forEach(o => { if (o.country) countries.add(o.country) })
+  store.logisticsBills.forEach(b => { if (b.country) countries.add(b.country) })
+  return Array.from(countries).sort()
+})
+
+const logisticsMethodFilterOptions = computed(() => {
+  const methods = new Set()
+  store.salesOrders.forEach(o => { if (o.logisticsMethod) methods.add(o.logisticsMethod) })
+  return Array.from(methods).sort()
 })
 
 function getOrderStatusTagType(status) {
@@ -726,19 +815,32 @@ function handleEditOrder(row) {
 }
 
 function handleDeleteOrder(row) {
-  if (confirm(`确定删除这条大货订单？订单运费、货款数据会同步删除\n订单ID: ${row.id}`)) {
+  ElMessageBox.confirm(
+    `确定删除订单 ${row.id}？订单运费、货款数据会同步删除`,
+    '删除确认',
+    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => {
     deleteSalesOrder(row.id)
-  }
+    ElMessage.success('删除成功')
+  }).catch(() => {})
 }
 
 function batchDeleteOrders() {
-  if (orderSelection.value.length === 0) return
-  if (confirm(`确定批量删除 ${orderSelection.value.length} 条大货订单？此操作不可恢复`)) {
+  if (orderSelection.value.length === 0) {
+    ElMessage.warning('请先勾选需要操作的数据')
+    return
+  }
+  ElMessageBox.confirm(
+    `已勾选 ${orderSelection.value.length} 条数据，删除不可恢复，确认执行？`,
+    '批量删除确认',
+    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => {
     orderSelection.value.forEach(row => {
       deleteSalesOrder(row.id)
     })
     orderSelection.value = []
-  }
+    ElMessage.success('批量删除成功')
+  }).catch(() => {})
 }
 
 function confirmOrder() {
@@ -956,56 +1058,198 @@ function confirmBillExport() {
 }
 
 function exportOrders() {
-  const orders = filteredOrders.value.map(o => ({
-    id: o.id,
-    bookingDate: o.bookingDate,
-    customerName: o.customerName,
-    logisticsNo: o.logisticsNo,
-    status: getOrderStatusLabel(o.status),
-    model: o.model,
-    qty: o.qty,
-    amount: o.amount,
-    currency: o.currency || 'USD',
-    bulkFreight: o.bulkFreight || 0,
-    orderType: o.orderType === 'paid_sample' ? '付费样品' : '大货订单',
-    balanceSettled: o.balanceSettled
-  }))
-  exportToExcel('大货订单台账', [], orders, { template: 'order' })
+  const headers = ['订单ID', '客户姓名', '机型', '出货数量', '订舱日期', '物流单号', '出货状态', '订单货款', '大货运费', '币种', '尾款状态']
+  const exportData = filteredOrders.value.map(o => [
+    o.id,
+    o.customerName,
+    o.model,
+    o.qty,
+    o.bookingDate || '-',
+    o.logisticsNo || '-',
+    getOrderStatusLabel(o.status),
+    o.amount || '-',
+    o.bulkFreight || 0,
+    o.currency || 'USD',
+    o.balanceSettled ? '已结清' : '未结清'
+  ])
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+
+  const worksheet = workbook.addWorksheet('订单台账')
+
+  const titleRow = worksheet.addRow([`订单台账 - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
+  titleRow.alignment = { horizontal: 'center' }
+  worksheet.mergeCells(`A1:K1`)
+
+  worksheet.addRow([])
+
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+
+  exportData.forEach(rowData => {
+    const row = worksheet.addRow(rowData)
+    row.font = { name: '微软雅黑', size: 11 }
+    row.alignment = { vertical: 'middle' }
+    row.height = 22
+  })
+
+  const columnWidths = [14, 12, 10, 10, 12, 14, 10, 12, 12, 8, 10]
+  headers.forEach((_, index) => {
+    const col = worksheet.getColumn(index + 1)
+    col.width = columnWidths[index] || 12
+    col.alignment = { vertical: 'middle', horizontal: index >= 7 && index <= 8 ? 'right' : 'left' }
+  })
+
+  const lastRow = exportData.length + 2
+  if (exportData.length > 0) {
+    const range = worksheet.getCell(`A3:K${lastRow}`)
+    range.border = {
+      top: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      left: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      bottom: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      right: { style: 'thin', color: { argb: 'FFd0d0d0' } }
+    }
+  }
+
+  worksheet.freezePanes = 'A3'
+
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  const filename = `订单台账_${y}${m}${d}.xlsx`
+
+  workbook.xlsx.writeBuffer().then(buffer => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  })
 }
 
 function previewSingleOrder(order) {
-  previewOrders.value = [{
-    id: order.id,
-    bookingDate: order.bookingDate,
-    customerName: order.customerName,
-    logisticsNo: order.logisticsNo,
-    status: getOrderStatusLabel(order.status),
-    model: order.model,
-    qty: order.qty,
-    amount: order.amount,
-    currency: order.currency || 'USD',
-    bulkFreight: order.bulkFreight || 0,
-    orderType: order.orderType === 'paid_sample' ? '付费样品' : '大货订单',
-    balanceSettled: order.balanceSettled
-  }]
-  showPreviewDialog.value = true
+  currentOrderPreview.value = order
+  showOrderRowPreview.value = true
+}
+
+function printOrderRow() {
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return
+  const o = currentOrderPreview.value
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>订单详情 - ${o.id}</title>
+      <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; padding: 40px; }
+        h1 { text-align: center; color: #303133; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        td { padding: 12px; border: 1px solid #dcdfe6; font-size: 14px; }
+        td.label { background: #f5f7fa; font-weight: bold; width: 140px; color: #606266; }
+      </style>
+    </head>
+    <body>
+      <h1>订单详情</h1>
+      <table>
+        <tr><td class="label">订单ID</td><td>${o.id || '-'}</td></tr>
+        <tr><td class="label">客户姓名</td><td>${o.customerName || '-'}</td></tr>
+        <tr><td class="label">机型</td><td>${o.model || '-'}</td></tr>
+        <tr><td class="label">出货数量</td><td>${o.qty || '-'}</td></tr>
+        <tr><td class="label">订舱日期</td><td>${o.bookingDate || '-'}</td></tr>
+        <tr><td class="label">物流单号</td><td>${o.logisticsNo || '-'}</td></tr>
+        <tr><td class="label">出货状态</td><td>${getOrderStatusLabel(o.status)}</td></tr>
+        <tr><td class="label">订单货款</td><td>${o.amount ? o.amount + ' ' + (o.currency || 'USD') : '-'}</td></tr>
+        <tr><td class="label">大货运费</td><td>${o.bulkFreight ? o.bulkFreight + ' ' + (o.currency || 'USD') : '-'}</td></tr>
+        <tr><td class="label">币种</td><td>${o.currency || 'USD'}</td></tr>
+        <tr><td class="label">尾款状态</td><td>${o.balanceSettled ? '已结清' : '未结清'}</td></tr>
+        <tr><td class="label">订单类型</td><td>${o.orderType === 'paid_sample' ? '付费样品' : '大货订单'}</td></tr>
+      </table>
+    </body>
+    </html>
+  `)
+  printWindow.document.close()
+  printWindow.onload = () => {
+    printWindow.print()
+  }
 }
 
 function exportSingleOrder(order) {
-  exportToExcel(order.id, [], [{
-    id: order.id,
-    bookingDate: order.bookingDate,
-    customerName: order.customerName,
-    logisticsNo: order.logisticsNo,
-    status: getOrderStatusLabel(order.status),
-    model: order.model,
-    qty: order.qty,
-    amount: order.amount,
-    currency: order.currency || 'USD',
-    bulkFreight: order.bulkFreight || 0,
-    orderType: order.orderType === 'paid_sample' ? '付费样品' : '大货订单',
-    balanceSettled: order.balanceSettled
-  }], { template: 'order' })
+  const headers = ['订单ID', '客户姓名', '机型', '出货数量', '订舱日期', '物流单号', '出货状态', '订单货款', '大货运费', '币种', '尾款状态']
+  const exportData = [[
+    order.id,
+    order.customerName,
+    order.model,
+    order.qty,
+    order.bookingDate || '-',
+    order.logisticsNo || '-',
+    getOrderStatusLabel(order.status),
+    order.amount || '-',
+    order.bulkFreight || 0,
+    order.currency || 'USD',
+    order.balanceSettled ? '已结清' : '未结清'
+  ]]
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+
+  const worksheet = workbook.addWorksheet(order.id)
+
+  const titleRow = worksheet.addRow([`订单 - ${order.id}`])
+  titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
+  titleRow.alignment = { horizontal: 'center' }
+  worksheet.mergeCells(`A1:K1`)
+
+  worksheet.addRow([])
+
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+
+  exportData.forEach(rowData => {
+    const row = worksheet.addRow(rowData)
+    row.font = { name: '微软雅黑', size: 11 }
+    row.alignment = { vertical: 'middle' }
+    row.height = 22
+  })
+
+  const columnWidths = [14, 12, 10, 10, 12, 14, 10, 12, 12, 8, 10]
+  headers.forEach((_, index) => {
+    const col = worksheet.getColumn(index + 1)
+    col.width = columnWidths[index] || 12
+    col.alignment = { vertical: 'middle', horizontal: 'left' }
+  })
+
+  worksheet.freezePanes = 'A3'
+
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  const filename = `${order.id}_${y}${m}${d}.xlsx`
+
+  workbook.xlsx.writeBuffer().then(buffer => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  })
 }
 
 function exportBills() {

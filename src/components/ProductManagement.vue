@@ -42,6 +42,10 @@
             <el-date-picker v-model="filterExpireDate" type="month" placeholder="到期月份" />
             <el-button type="primary" @click="handleAddCert">新增认证</el-button>
             <el-button @click="exportCerts">导出Excel</el-button>
+            <el-button type="danger" :disabled="selectedCertIds.length === 0" @click="batchDeleteCerts">
+              批量删除
+              <span v-if="selectedCertIds.length > 0">（{{ selectedCertIds.length }}）</span>
+            </el-button>
           </div>
           <div class="cert-alerts">
             <div v-if="expiringCerts7Days.length > 0" class="alert-item danger">
@@ -59,7 +63,8 @@
               <span>{{ expiringCerts30Days.length }} 个证书将在30天内到期</span>
             </div>
           </div>
-          <el-table :data="filteredCerts" border stripe>
+          <el-table :data="filteredCerts" border stripe @selection-change="handleCertSelectionChange">
+            <el-table-column type="selection" width="50" />
             <el-table-column prop="id" label="认证ID" width="80" />
             <el-table-column prop="model" label="关联机型" />
             <el-table-column prop="certType" label="认证类型">
@@ -349,8 +354,13 @@
             <el-input v-model="supplierKeyword" placeholder="搜索供应商" clearable style="width: 250px" />
             <el-button type="primary" @click="handleAddSupplier">新增供应商</el-button>
             <el-button @click="exportSuppliers">导出Excel</el-button>
+            <el-button type="danger" :disabled="selectedSupplierIds.length === 0" @click="batchDeleteSuppliers">
+              批量删除
+              <span v-if="selectedSupplierIds.length > 0">（{{ selectedSupplierIds.length }}）</span>
+            </el-button>
           </div>
-          <el-table :data="filteredSuppliers" border stripe>
+          <el-table :data="filteredSuppliers" border stripe @selection-change="handleSupplierSelectionChange">
+            <el-table-column type="selection" width="50" />
             <el-table-column prop="id" label="ID" width="60" />
             <el-table-column prop="name" label="供应商名称" />
             <el-table-column prop="contact" label="对接人" />
@@ -554,7 +564,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted, createVNode } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import FileUploader from './FileUploader.vue'
 import { store, addProductModel, updateProductModel, deleteProductModel, addCertRecord, updateCertRecord, deleteCertRecord, addSupplier, updateSupplier, deleteSupplier, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
@@ -578,6 +588,69 @@ watch(() => props.currentSubPage, (newVal) => {
 const searchKeyword = ref('')
 const filterCertType = ref('')
 const filterExpireDate = ref('')
+
+// 批量选择：认证、供应商
+const selectedCertIds = ref([])
+const selectedSupplierIds = ref([])
+
+function handleCertSelectionChange(selection) {
+  selectedCertIds.value = selection.map(item => item.id)
+}
+
+function handleSupplierSelectionChange(selection) {
+  selectedSupplierIds.value = selection.map(item => item.id)
+}
+
+function batchDeleteCerts() {
+  if (selectedCertIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要删除的认证记录')
+    return
+  }
+  ElMessageBox.confirm(
+    `已勾选 ${selectedCertIds.value.length} 条认证记录，删除不可恢复，确认执行？`,
+    '确认批量删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    selectedCertIds.value.forEach(id => {
+      const idx = store.certRecords.findIndex(r => r.id === id)
+      if (idx > -1) {
+        store.certRecords.splice(idx, 1)
+      }
+    })
+    ElMessage.success(`已删除 ${selectedCertIds.value.length} 条认证记录`)
+    selectedCertIds.value = []
+  }).catch(() => {})
+}
+
+function batchDeleteSuppliers() {
+  if (selectedSupplierIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要删除的供应商')
+    return
+  }
+  ElMessageBox.confirm(
+    `已勾选 ${selectedSupplierIds.value.length} 个供应商，删除不可恢复，确认执行？`,
+    '确认批量删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    selectedSupplierIds.value.forEach(id => {
+      const idx = store.suppliers.findIndex(s => s.id === id)
+      if (idx > -1) {
+        store.suppliers.splice(idx, 1)
+      }
+    })
+    ElMessage.success(`已删除 ${selectedSupplierIds.value.length} 个供应商`)
+    selectedSupplierIds.value = []
+  }).catch(() => {})
+}
+
 const filterModel = ref('')
 const supplierKeyword = ref('')
 

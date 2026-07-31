@@ -249,6 +249,17 @@
         </div>
       </header>
       
+      <div class="customer-tab-bar" v-if="showTabBar">
+        <el-tabs v-model="activeTopTab" type="card" @tab-change="handleTopTabChange">
+          <el-tab-pane 
+            v-for="tab in topTabs" 
+            :key="tab.name" 
+            :label="tab.label" 
+            :name="tab.name"
+          />
+        </el-tabs>
+      </div>
+      
       <div class="page-content">
         <Workbench v-if="currentPage === 'workbench'" @navigate="handleNavClick" />
         <CalendarView v-else-if="currentPage === 'calendar'" />
@@ -261,12 +272,14 @@
         <MilestoneView v-else-if="currentPage === 'milestone'" :readOnly="isReadOnly('milestone')" />
         <ActivityLog v-else-if="currentPage === 'activity'" :readOnly="isReadOnly('activity')" />
         
-        <CustomerManagement v-else-if="currentPage === 'customer'" :currentSubPage="currentSubPage" />
+        <CustomerManagement v-else-if="currentPage === 'customer'" :currentSubPage="currentSubPage" @sub-page-change="handleSubPageChange" />
         <OrderManagement v-else-if="currentPage === 'order'" :currentSubPage="currentSubPage" />
         <ProductManagement v-else-if="currentPage === 'product'" :currentSubPage="currentSubPage" />
         <DailyWork v-else-if="currentPage === 'dailywork'" :currentSubPage="currentSubPage" />
         <FinanceManagement v-else-if="currentPage === 'finance'" :currentSubPage="currentSubPage" />
         <SampleDelivery v-else-if="currentPage === 'sample'" />
+        <DeliveryAllocation v-else-if="currentPage === 'delivery-allocation'" />
+        <DeliverySchedule v-else-if="currentPage === 'delivery-schedule'" />
       </div>
     </main>
     
@@ -463,7 +476,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, h, computed, onMounted } from 'vue'
+import { ref, reactive, h, computed, onMounted, onUnmounted, watch } from 'vue'
 import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode } from './store.js'
 import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig, syncToSupabase, fetchFromSupabase } from './supabase.js'
 import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
@@ -482,7 +495,9 @@ const syncableTables = [
   { name: 'logistics_orders', label: '物流运单跟踪' },
   { name: 'package_freight_records', label: '物流费用对账' },
   { name: 'sales_orders', label: '订单总台账' },
-  { name: 'customer_groups', label: '客户分组配置' }
+  { name: 'customer_groups', label: '客户分组配置' },
+  { name: 'delivery_allocations', label: '出货分配台账' },
+  { name: 'delivery_schedules', label: '订单交期管控台账' }
 ]
 
 const showSyncDialog = ref(false)
@@ -574,7 +589,9 @@ async function saveLocalData(tableName, data) {
     'logistics_orders': () => store.logisticsBills,
     'package_freight_records': () => store.freightRecords,
     'sales_orders': () => store.salesOrders,
-    'customer_groups': () => store.customerGroups
+    'customer_groups': () => store.customerGroups,
+    'delivery_allocations': () => store.deliveryAllocations,
+    'delivery_schedules': () => store.deliverySchedules
   }
   
   const getter = TABLE_STORE_MAP[tableName]
@@ -613,7 +630,9 @@ async function getLocalData(tableName) {
     'logistics_orders': () => store.logisticsBills,
     'package_freight_records': () => store.freightRecords || [],
     'sales_orders': () => store.salesOrders,
-    'customer_groups': () => store.customerGroups.map(g => typeof g === 'string' ? { group_name: g } : g)
+    'customer_groups': () => store.customerGroups.map(g => typeof g === 'string' ? { group_name: g } : g),
+    'delivery_allocations': () => store.deliveryAllocations || [],
+    'delivery_schedules': () => store.deliverySchedules || []
   }
   
   const getter = TABLE_STORE_MAP[tableName]
@@ -641,20 +660,16 @@ import ProductManagement from './components/ProductManagement.vue'
 import DailyWork from './components/DailyWork.vue'
 import FinanceManagement from './components/FinanceManagement.vue'
 import SampleDelivery from './components/SampleDelivery.vue'
+import DeliveryAllocation from './components/DeliveryAllocation.vue'
+import DeliverySchedule from './components/DeliverySchedule.vue'
 
 const isLoggedIn = computed(() => !!authStore.currentUser)
 
-onMounted(async () => {
-  isIncognito.value = isIncognitoMode()
-  
-  if (isLoggedIn.value) {
-    await syncAllFromSupabase()
-  }
-})
+const isIncognito = ref(false)
 
 const currentPage = ref('workbench')
 const currentSubPage = ref('')
-const viewMode = ref('gantt')
+const activeTopTab = ref('main')
 
 const expandedGroups = reactive({
   development: false,
@@ -665,6 +680,112 @@ const expandedGroups = reactive({
   finance: true,
   settings: true
 })
+
+onMounted(async () => {
+  isIncognito.value = isIncognitoMode()
+  
+  if (isLoggedIn.value) {
+    await syncAllFromSupabase()
+  }
+  
+  initFromHash()
+  window.addEventListener('hashchange', initFromHash)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('hashchange', initFromHash)
+})
+
+function initFromHash() {
+  const hash = window.location.hash.replace('#', '')
+  if (!hash) {
+    updateHash()
+    return
+  }
+  const [page, subPage] = hash.split('/')
+  const validPages = ['workbench', 'calendar', 'files', 'report', 'settings', 'project', 'todo', 'milestone', 'activity', 'customer', 'order', 'product', 'dailywork', 'finance', 'sample', 'delivery-allocation', 'delivery-schedule']
+  if (validPages.includes(page)) {
+    currentPage.value = page
+    currentSubPage.value = subPage || ''
+  } else {
+    currentPage.value = 'workbench'
+    currentSubPage.value = ''
+    updateHash()
+  }
+  if (page === 'customer' || page === 'delivery-allocation' || page === 'delivery-schedule') {
+    expandedGroups['customer'] = true
+    expandedGroups['order'] = true
+  }
+}
+
+function updateHash() {
+  const hash = currentSubPage.value ? `#${currentPage.value}/${currentSubPage.value}` : `#${currentPage.value}`
+  if (window.location.hash !== hash) {
+    window.location.hash = hash
+  }
+}
+
+watch([currentPage, currentSubPage], () => {
+  updateHash()
+})
+
+const viewMode = ref('gantt')
+
+const showTabBar = computed(() => {
+  return ['customer', 'sample', 'delivery-allocation', 'delivery-schedule'].includes(currentPage.value)
+})
+
+const topTabs = computed(() => {
+  if (currentPage.value === 'customer' || currentPage.value === 'sample') {
+    return [
+      { name: 'main', label: '海外客户主台账' },
+      { name: 'followup', label: '客户跟进记录' },
+      { name: 'sample', label: '样机寄样申请' },
+      { name: 'group', label: '客户分组配置' }
+    ]
+  }
+  if (currentPage.value === 'delivery-allocation' || currentPage.value === 'delivery-schedule') {
+    return [
+      { name: 'delivery-allocation', label: '出货分配台账' },
+      { name: 'delivery-schedule', label: '订单交期管控台账' }
+    ]
+  }
+  return []
+})
+
+watch(currentPage, () => {
+  if (currentPage.value === 'customer') {
+    activeTopTab.value = currentSubPage.value || 'main'
+  } else if (currentPage.value === 'sample') {
+    activeTopTab.value = 'sample'
+  } else if (currentPage.value === 'delivery-allocation') {
+    activeTopTab.value = 'delivery-allocation'
+  } else if (currentPage.value === 'delivery-schedule') {
+    activeTopTab.value = 'delivery-schedule'
+  }
+})
+
+function handleTopTabChange(tabName) {
+  if (currentPage.value === 'customer') {
+    if (tabName === 'sample') {
+      currentPage.value = 'sample'
+      currentSubPage.value = ''
+    } else {
+      currentSubPage.value = tabName
+    }
+  } else if (tabName === 'delivery-allocation') {
+    currentPage.value = 'delivery-allocation'
+    currentSubPage.value = ''
+  } else if (tabName === 'delivery-schedule') {
+    currentPage.value = 'delivery-schedule'
+    currentSubPage.value = ''
+  }
+}
+
+function handleSubPageChange(subPage) {
+  currentSubPage.value = subPage
+  activeTopTab.value = subPage
+}
 
 const showNewProjectDialog = ref(false)
 const showImportDialog = ref(false)
@@ -678,8 +799,6 @@ const supabaseConfigForm = reactive({
   key: '',
   remember: false
 })
-
-const isIncognito = ref(false)
 
 function handleConfigChange(changed) {
   hasUnsavedConfig.value = changed
@@ -756,7 +875,9 @@ const salesNavGroups = [
       { key: 'sample', subKey: 'main', label: '样机寄样台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z' }), h('circle', { cx: '12', cy: '10', r: '3' })) },
       { key: 'order', subKey: 'logistics', label: '物流运单跟踪', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 7h-9M14 17H5M17 17h2M17 7h2M7 17H5M7 7H5M20 14h-9' })) },
       { key: 'order', subKey: 'bill', label: '物流费用对账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '12', y1: '1', x2: '12', y2: '23' }), h('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })) },
-      { key: 'order', subKey: 'imei', label: 'IMEI出库核对', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' })) }
+      { key: 'order', subKey: 'imei', label: 'IMEI出库核对', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' })) },
+      { key: 'delivery-allocation', subKey: '', label: '出货分配台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '1', y: '3', width: '15', height: '13' }), h('polygon', { points: '16 8 20 8 23 11 23 16 16 16 16 8' }), h('circle', { cx: '5.5', cy: '18.5', r: '2.5' }), h('circle', { cx: '18.5', cy: '18.5', r: '2.5' })) },
+      { key: 'delivery-schedule', subKey: '', label: '订单交期管控台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('circle', { cx: '12', cy: '12', r: '10' }), h('polyline', { points: '12 6 12 12 16 14' })) }
     ]
   },
   {
@@ -1327,6 +1448,22 @@ html, body, #app {
 
 .view-select {
   width: 120px;
+}
+
+.customer-tab-bar {
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 0 var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.customer-tab-bar .el-tabs--card > .el-tabs__header .el-tabs__item {
+  font-weight: 500;
+}
+
+.customer-tab-bar .el-tabs--card > .el-tabs__header .el-tabs__item.is-active {
+  background: #ecf5ff;
+  color: #409eff;
 }
 
 .page-content {

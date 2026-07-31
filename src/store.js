@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 const AUTH_KEY = 'project_workbench_auth'
 const USER_PREFIX = 'project_workbench_user_'
-const DATA_VERSION = 'v12'
+const DATA_VERSION = 'v13'
 
 const defaultUser = {
   name: '张三',
@@ -15,7 +15,7 @@ const defaultUser = {
 }
 
 const defaultData = {
-  customerGroups: ['Hans', 'Ethan', 'Jason', 'Ralph', 'Mr.Krish'],
+  customerGroups: ['中东沙特组', '阿联酋UAE组', '阿曼/巴林/科威特组', '卡塔尔组', '黎巴嫩组', '欧洲客户组', '东南亚客户组'],
   logisticsCompanies: ['顺丰', 'DHL', 'FedEx', 'UPS', 'EMS'],
   localMode: true,
   currentPage: 'workbench',
@@ -79,11 +79,11 @@ const defaultData = {
   ],
   
   customers: [
-    { id: 'c1', name: 'Hans', group: 'Hans', country: '德国', region: '欧洲', company: 'Hans GmbH', email: 'hans@example.com', phone: '+49123456789', address: '柏林', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
-    { id: 'c2', name: 'Ethan', group: 'Ethan', country: '美国', region: '北美洲', company: 'Ethan Inc', email: 'ethan@example.com', phone: '+11234567890', address: '纽约', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
-    { id: 'c3', name: 'Jason', group: 'Jason', country: '加拿大', region: '北美洲', company: 'Jason Co', email: 'jason@example.com', phone: '+12345678901', address: '多伦多', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
-    { id: 'c4', name: 'Ralph', group: 'Ralph', country: '英国', region: '欧洲', company: 'Ralph Ltd', email: 'ralph@example.com', phone: '+44123456789', address: '伦敦', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
-    { id: 'c5', name: 'Mr.Krish', group: 'Mr.Krish', country: '印度', region: '亚洲', company: 'Krish Enterprises', email: 'krish@example.com', phone: '+91123456789', address: '孟买', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
+    { id: 'c1', name: 'Hans', group: '欧洲客户组', country: '德国', region: '欧洲', company: 'Hans GmbH', email: 'hans@example.com', phone: '+49123456789', address: '柏林', model: 'E7 Elite', firstContactDate: '2024-01-10', sampleCount: 3, notes: '对产品质量要求较高', localMaterialPath: '', attachments: [] },
+    { id: 'c2', name: 'Ethan', group: '东南亚客户组', country: '美国', region: '北美洲', company: 'Ethan Inc', email: 'ethan@example.com', phone: '+11234567890', address: '纽约', model: 'NE75', firstContactDate: '2024-01-15', sampleCount: 2, notes: '潜在大客户', localMaterialPath: '', attachments: [] },
+    { id: 'c3', name: 'Jason', group: '东南亚客户组', country: '加拿大', region: '北美洲', company: 'Jason Co', email: 'jason@example.com', phone: '+12345678901', address: '多伦多', model: 'NE76', firstContactDate: '2024-02-01', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] },
+    { id: 'c4', name: 'Ralph', group: '欧洲客户组', country: '英国', region: '欧洲', company: 'Ralph Ltd', email: 'ralph@example.com', phone: '+44123456789', address: '伦敦', model: 'MTK6500', firstContactDate: '2024-02-10', sampleCount: 4, notes: '长期合作伙伴', localMaterialPath: '', attachments: [] },
+    { id: 'c5', name: 'Mr.Krish', group: '中东沙特组', country: '沙特阿拉伯', region: '中东', company: 'Krish Enterprises', email: 'krish@example.com', phone: '+91123456789', address: '利雅得', model: 'E7 Elite', firstContactDate: '2024-02-15', sampleCount: 1, notes: '', localMaterialPath: '', attachments: [] }
   ],
   
   sampleDeliveries: [
@@ -161,16 +161,16 @@ const defaultData = {
   ],
   
   customerFollowUps: [
-    { id: 'fu1', customerId: 'c1', followUpDate: '2024-03-14', content: '确认客户对样机测试结果满意', result: 'positive' },
-    { id: 'fu2', customerId: 'c2', followUpDate: '2024-03-13', content: '发送产品报价单', result: 'pending' },
-    { id: 'fu3', customerId: 'c1', followUpDate: '2026-07-01', content: '跟进E7 Elite订单生产进度', result: 'positive' },
-    { id: 'fu4', customerId: 'c2', followUpDate: '2026-07-03', content: '确认NE76发货时间', result: 'pending' },
-    { id: 'fu5', customerId: 'c3', followUpDate: '2026-07-05', content: '介绍新产品E7 Elite', result: 'positive' },
-    { id: 'fu6', customerId: 'c4', followUpDate: '2026-07-08', content: '协商MTK6500批量采购折扣', result: 'pending' },
-    { id: 'fu7', customerId: 'c5', followUpDate: '2026-07-10', content: '确认NE75样机测试反馈', result: 'positive' },
-    { id: 'fu8', customerId: 'c1', followUpDate: '2026-07-12', content: '发送出货确认单', result: 'positive' },
-    { id: 'fu9', customerId: 'c2', followUpDate: '2026-07-14', content: '跟进付款进度', result: 'pending' },
-    { id: 'fu10', customerId: 'c3', followUpDate: '2026-07-15', content: '确认下季度订单计划', result: 'positive' }
+    { id: 'fu1', customerId: 'c1', customerName: 'Hans', followupDate: '2024-03-14', content: '确认客户对样机测试结果满意', result: 'positive', contactMethod: '邮件', poNumber: 'PO2024001', nextFollowup: '2024-04-14', operator: '王聪', attachments: [] },
+    { id: 'fu2', customerId: 'c2', customerName: 'Ethan', followupDate: '2024-03-13', content: '发送产品报价单', result: 'pending', contactMethod: '邮件', poNumber: '', nextFollowup: '2024-03-20', operator: '王聪', attachments: [] },
+    { id: 'fu3', customerId: 'c1', customerName: 'Hans', followupDate: '2026-07-01', content: '跟进E7 Elite订单生产进度', result: 'positive', contactMethod: '微信', poNumber: 'PO202607001', nextFollowup: '2026-07-15', operator: '王聪', attachments: [] },
+    { id: 'fu4', customerId: 'c2', customerName: 'Ethan', followupDate: '2026-07-03', content: '确认NE76发货时间', result: 'pending', contactMethod: '邮件', poNumber: 'PO202607002', nextFollowup: '2026-07-10', operator: '王聪', attachments: [] },
+    { id: 'fu5', customerId: 'c3', customerName: 'Jason', followupDate: '2026-07-05', content: '介绍新产品E7 Elite', result: 'positive', contactMethod: '展会', poNumber: '', nextFollowup: '2026-07-20', operator: '王聪', attachments: [] },
+    { id: 'fu6', customerId: 'c4', customerName: 'Ralph', followupDate: '2026-07-08', content: '协商MTK6500批量采购折扣', result: 'pending', contactMethod: '电话', poNumber: '', nextFollowup: '2026-07-18', operator: '王聪', attachments: [] },
+    { id: 'fu7', customerId: 'c5', customerName: 'Mr.Krish', followupDate: '2026-07-10', content: '确认NE75样机测试反馈', result: 'positive', contactMethod: '邮件', poNumber: '', nextFollowup: '2026-07-25', operator: '王聪', attachments: [] },
+    { id: 'fu8', customerId: 'c1', customerName: 'Hans', followupDate: '2026-07-12', content: '发送出货确认单', result: 'positive', contactMethod: '邮件', poNumber: 'PO202607003', nextFollowup: '2026-07-22', operator: '王聪', attachments: [] },
+    { id: 'fu9', customerId: 'c2', customerName: 'Ethan', followupDate: '2026-07-14', content: '跟进付款进度', result: 'pending', contactMethod: '微信', poNumber: 'PO202607002', nextFollowup: '2026-07-28', operator: '王聪', attachments: [] },
+    { id: 'fu10', customerId: 'c3', customerName: 'Jason', followupDate: '2026-07-15', content: '确认下季度订单计划', result: 'positive', contactMethod: '视频会议', poNumber: '', nextFollowup: '2026-08-01', operator: '王聪', attachments: [] }
   ],
   
   developmentLetters: [
@@ -282,7 +282,10 @@ const defaultData = {
       sendPurpose: '彩盒确认样机',
       sendQty: 2
     }
-  ]
+  ],
+
+  deliveryAllocations: [],
+  deliverySchedules: []
 }
 
 function loadAuth() {
@@ -437,6 +440,9 @@ function saveToLocalStorage() {
       materialRecords: store.materialRecords,
       projects: store.projects,
       stages: store.stages,
+      salesOrders: store.salesOrders,
+      deliveryAllocations: store.deliveryAllocations,
+      deliverySchedules: store.deliverySchedules,
       dataVersion: DATA_VERSION
     }
     localStorage.setItem(USER_PREFIX + currentUserId, JSON.stringify(data))

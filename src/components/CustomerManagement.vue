@@ -1,8 +1,6 @@
 <template>
   <div class="customer-management">
-    <el-tabs v-model="activeTab" type="card">
-      <el-tab-pane label="海外客户主台账" name="main">
-        <div class="tab-content">
+    <div v-if="activeTab === 'main'" class="tab-content">
           <div class="search-bar">
             <el-input v-model="searchKeyword" placeholder="搜索客户姓名/邮箱" clearable style="width: 250px" />
             <el-select v-model="filterGroup" placeholder="客户分组" clearable style="width: 150px">
@@ -11,8 +9,13 @@
             <el-button type="primary" @click="handleAddCustomer">新增客户</el-button>
             <el-button @click="previewCustomers">预览</el-button>
             <el-button @click="exportCustomers">导出Excel</el-button>
+            <el-button type="success" :disabled="selectedCustomerIds.length === 0" @click="openMoveGroupDialog">
+              批量分配分组
+              <span v-if="selectedCustomerIds.length > 0">（{{ selectedCustomerIds.length }}）</span>
+            </el-button>
           </div>
-          <el-table :data="filteredCustomers" border stripe>
+          <el-table :data="filteredCustomers" border stripe @selection-change="handleCustomerSelectionChange">
+            <el-table-column type="selection" width="50" />
             <el-table-column prop="id" label="客户ID" width="80" />
             <el-table-column prop="name" label="客户姓名" />
             <el-table-column prop="group" label="客户分组" />
@@ -80,11 +83,9 @@
               </template>
             </el-table-column>
           </el-table>
-        </div>
-      </el-tab-pane>
-      
-      <el-tab-pane label="客户跟进记录" name="followup">
-        <div class="tab-content">
+      </div>
+    
+    <div v-else-if="activeTab === 'followup'" class="tab-content">
           <div class="search-bar">
             <el-select v-model="followupCustomerId" placeholder="选择客户" style="width: 200px">
               <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
@@ -92,8 +93,14 @@
             <el-date-picker v-model="followupDate" type="date" placeholder="跟进日期" />
             <el-button type="primary" @click="handleAddFollowup">新增记录</el-button>
             <el-button @click="openFollowupPreview">导出Excel</el-button>
+            <el-button type="success" @click="exportFollowupsEnhanced">增强导出</el-button>
+            <el-button type="danger" :disabled="selectedFollowupIds.length === 0" @click="batchDeleteFollowups">
+              批量删除
+              <span v-if="selectedFollowupIds.length > 0">（{{ selectedFollowupIds.length }}）</span>
+            </el-button>
           </div>
-          <el-table :data="filteredFollowups" border stripe header-cell-class-name="table-header">
+          <el-table :data="filteredFollowups" border stripe header-cell-class-name="table-header" @selection-change="handleFollowupSelectionChange">
+            <el-table-column type="selection" width="50" />
             <el-table-column prop="id" label="记录ID" width="100" />
             <el-table-column prop="customerName" label="客户姓名" width="120">
               <template #default="{ row }">
@@ -118,18 +125,17 @@
                 <span :class="{ 'overdue-date': isOverdueDate(row.nextFollowup) }">{{ row.nextFollowup || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="150" fixed="right">
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }">
+                <el-button size="small" @click="openFollowupDetail(row)">预览</el-button>
                 <el-button size="small" @click="handleEditFollowup(row)">编辑</el-button>
                 <el-button size="small" type="danger" @click="handleDeleteFollowup(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
-        </div>
-      </el-tab-pane>
-      
-      <el-tab-pane label="客户分组配置" name="group">
-        <div class="tab-content">
+      </div>
+    
+    <div v-else-if="activeTab === 'group'" class="tab-content">
           <div class="group-list">
             <div v-for="group in customerGroups" :key="group" class="group-card">
               <div class="group-header">
@@ -149,7 +155,7 @@
           </div>
           <div class="group-actions-bar">
             <el-button type="primary" @click="showAddGroupDialog = true">新增分组</el-button>
-            <el-button @click="exportGroups">导出Excel</el-button>
+            <el-button type="success" @click="showGroupExportDialog = true">导出Excel</el-button>
           </div>
           <el-dialog v-model="showAddGroupDialog" :title="isEditingGroup ? '编辑客户分组' : '新增客户分组'" width="400px">
             <el-form :model="newGroupForm" label-width="80px">
@@ -162,9 +168,7 @@
               <el-button type="primary" @click="isEditingGroup ? handleSaveEditGroup() : handleAddGroup()">确定</el-button>
             </template>
           </el-dialog>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
+      </div>
     
     <el-dialog v-model="showCustomerDialog" :title="isEditingCustomer ? '编辑客户' : '新增客户'" width="600px">
       <el-form :model="customerForm" label-width="120px">
@@ -386,12 +390,80 @@
         <el-button type="primary" @click="confirmFollowupExport">确认导出</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showMoveGroupDialog" title="批量分配分组" width="450px">
+      <div class="move-group-info">
+        <p>已选择 <strong>{{ selectedCustomerIds.length }}</strong> 位客户</p>
+      </div>
+      <el-form label-width="100px">
+        <el-form-item label="目标分组">
+          <el-select v-model="moveTargetGroup" placeholder="请选择目标分组" style="width: 100%" filterable>
+            <el-option v-for="g in customerGroups" :key="g" :label="g" :value="g" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showMoveGroupDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmMoveGroup">确认分配</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showFollowupDetailDialog" title="跟进记录详情" width="800px" top-class="followup-detail-dialog">
+      <div v-if="currentPreviewFollowup">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="跟进ID">{{ currentPreviewFollowup.id || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="客户名称">{{ currentPreviewFollowup.customerName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="所属分组">
+            {{ (store.customers.find(c => c.id === currentPreviewFollowup.customerId)?.group) || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="跟进日期">{{ currentPreviewFollowup.followupDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="沟通方式">{{ currentPreviewFollowup.contactMethod || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="关联PO号">{{ currentPreviewFollowup.poNumber || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="下次跟进时间">{{ currentPreviewFollowup.nextFollowup || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="操作人">{{ currentPreviewFollowup.operator || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="跟进详情" :span="2">{{ currentPreviewFollowup.content || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="附件名称" :span="2">
+            <span v-if="currentPreviewFollowup.attachments && currentPreviewFollowup.attachments.length > 0">
+              {{ currentPreviewFollowup.attachments.map(a => a.name).join('、') }}
+            </span>
+            <span v-else>-</span>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <el-button @click="showFollowupDetailDialog = false">关闭</el-button>
+        <el-button type="primary" @click="printFollowupDetail">打印</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showGroupExportDialog" title="导出客户分组" width="500px">
+      <el-form label-width="120px">
+        <el-form-item label="导出范围">
+          <el-radio-group v-model="groupExportFilter">
+            <el-radio label="all">全量导出所有分组</el-radio>
+            <el-radio label="single">筛选单分组导出</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="groupExportFilter === 'single'" label="选择分组">
+          <el-select v-model="groupExportTarget" placeholder="请选择分组" style="width: 100%" filterable>
+            <el-option v-for="g in customerGroups" :key="g" :label="g" :value="g" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="export-preview-info">
+        <p>将导出字段：分组名称、分组内客户数量、客户英文名、对接人、国家、联系方式</p>
+      </div>
+      <template #footer>
+        <el-button @click="showGroupExportDialog = false">取消</el-button>
+        <el-button type="primary" @click="exportGroupsEnhanced">确认导出</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
@@ -405,6 +477,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['sub-page-change'])
+
 const activeTab = ref(props.currentSubPage || 'main')
 
 watch(() => props.currentSubPage, (newVal) => {
@@ -412,6 +486,10 @@ watch(() => props.currentSubPage, (newVal) => {
     activeTab.value = newVal
   }
 }, { immediate: true })
+
+watch(activeTab, (val) => {
+  emit('sub-page-change', val)
+})
 
 const searchKeyword = ref('')
 const filterGroup = ref('')
@@ -428,12 +506,47 @@ const showFollowupPreview = ref(false)
 const isEditingCustomer = ref(false)
 const isEditingFollowup = ref(false)
 
+const selectedCustomerIds = ref([])
+const showMoveGroupDialog = ref(false)
+const moveTargetGroup = ref('')
+
+const selectedFollowupIds = ref([])
+
+const showFollowupDetailDialog = ref(false)
+const currentPreviewFollowup = ref(null)
+
+const showGroupExportDialog = ref(false)
+const groupExportFilter = ref('all')
+const groupExportTarget = ref('')
+
 const currentAttachments = ref([])
 const isLocalhost = computed(() => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
 onMounted(async () => {
   await syncAllFromSupabase()
+  initPresetGroups()
 })
+
+const PRESET_GROUPS = [
+  '中东沙特组',
+  '阿联酋UAE组',
+  '阿曼/巴林/科威特组',
+  '卡塔尔组',
+  '黎巴嫩组',
+  '欧洲客户组',
+  '东南亚客户组'
+]
+
+function initPresetGroups() {
+  if (!store.customerGroups) {
+    store.customerGroups = []
+  }
+  PRESET_GROUPS.forEach(g => {
+    if (!store.customerGroups.includes(g)) {
+      store.customerGroups.push(g)
+    }
+  })
+}
 
 function formatFileSize(bytes) {
   if (!bytes) return '0B'
@@ -963,6 +1076,249 @@ function confirmFollowupExport() {
   showFollowupPreview.value = false
 }
 
+function handleCustomerSelectionChange(selection) {
+  selectedCustomerIds.value = selection.map(c => c.id)
+}
+
+function handleFollowupSelectionChange(selection) {
+  selectedFollowupIds.value = selection.map(f => f.id)
+}
+
+function openMoveGroupDialog() {
+  if (selectedCustomerIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要操作的数据')
+    return
+  }
+  moveTargetGroup.value = ''
+  showMoveGroupDialog.value = true
+}
+
+function confirmMoveGroup() {
+  if (!moveTargetGroup.value) {
+    ElMessage.warning('请选择目标分组')
+    return
+  }
+  ElMessageBox.confirm(
+    `已选择 ${selectedCustomerIds.value.length} 位客户，确认将其移动到「${moveTargetGroup.value}」？`,
+    '确认批量分配分组',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    selectedCustomerIds.value.forEach(id => {
+      const customer = store.customers.find(c => c.id === id)
+      if (customer) {
+        customer.group = moveTargetGroup.value
+      }
+    })
+    ElMessage.success(`已将 ${selectedCustomerIds.value.length} 位客户移动到「${moveTargetGroup.value}」`)
+    selectedCustomerIds.value = []
+    showMoveGroupDialog.value = false
+  }).catch(() => {})
+}
+
+async function exportGroupsEnhanced() {
+  let groupsToExport = customerGroups.value
+  if (groupExportFilter.value === 'single' && groupExportTarget.value) {
+    groupsToExport = [groupExportTarget.value]
+  }
+  if (groupsToExport.length === 0) {
+    ElMessage.warning('暂无分组可导出')
+    return
+  }
+  const ExcelJS = (await import('exceljs')).default
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+  const mainSheet = workbook.addWorksheet('分组清单')
+  const titleRow = mainSheet.addRow([`客户分组清单 - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
+  titleRow.alignment = { horizontal: 'center' }
+  mainSheet.mergeCells('A1:D1')
+  mainSheet.addRow([])
+  const headers = ['分组名称', '分组内客户数量', '客户英文名', '对接人', '国家', '联系方式']
+  const headerRow = mainSheet.addRow(headers)
+  headerRow.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+  groupsToExport.forEach(group => {
+    const customers = getGroupCustomers(group)
+    if (customers.length === 0) {
+      mainSheet.addRow([group, 0, '', '', '', ''])
+    } else {
+      customers.forEach((c, idx) => {
+        const row = mainSheet.addRow([
+          idx === 0 ? group : '',
+          idx === 0 ? customers.length : '',
+          c.name || '',
+          c.email || '',
+          c.country || '',
+          c.phone || ''
+        ])
+        row.font = { name: '微软雅黑', size: 11 }
+        row.alignment = { vertical: 'middle' }
+        row.height = 22
+      })
+    }
+  })
+  const widths = [18, 14, 15, 20, 12, 18]
+  widths.forEach((w, i) => {
+    mainSheet.getColumn(i + 1).width = w
+    mainSheet.getColumn(i + 1).alignment = { vertical: 'middle', horizontal: 'left' }
+  })
+  const dateStr = new Date().toISOString().split('T')[0]
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `客户分组_${dateStr}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+  showGroupExportDialog.value = false
+  ElMessage.success('分组导出成功')
+}
+
+function openFollowupDetail(row) {
+  currentPreviewFollowup.value = row
+  showFollowupDetailDialog.value = true
+}
+
+function printFollowupDetail() {
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return
+  const row = currentPreviewFollowup.value
+  if (!row) return
+  const customer = store.customers.find(c => c.id === row.customerId)
+  const groupName = customer ? customer.group : '-'
+  const attachNames = row.attachments && row.attachments.length > 0
+    ? row.attachments.map(a => a.name).join('、')
+    : '-'
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>跟进记录详情 - ${row.id}</title>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; padding: 40px; }
+        h1 { text-align: center; color: #1a1a2e; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #d0d0d0; padding: 12px 15px; text-align: left; }
+        th { background: #1a1a2e; color: #fff; width: 150px; font-weight: 600; }
+        .meta { color: #666; font-size: 14px; margin-top: 20px; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <h1>跟进记录详情</h1>
+      <table>
+        <tr><th>跟进ID</th><td>${row.id || '-'}</td></tr>
+        <tr><th>客户名称</th><td>${row.customerName || '-'}</td></tr>
+        <tr><th>所属分组</th><td>${groupName}</td></tr>
+        <tr><th>跟进日期</th><td>${row.followupDate || '-'}</td></tr>
+        <tr><th>沟通方式</th><td>${row.contactMethod || '-'}</td></tr>
+        <tr><th>跟进详情</th><td>${row.content || '-'}</td></tr>
+        <tr><th>关联PO号</th><td>${row.poNumber || '-'}</td></tr>
+        <tr><th>下次跟进时间</th><td>${row.nextFollowup || '-'}</td></tr>
+        <tr><th>操作人</th><td>${row.operator || '-'}</td></tr>
+        <tr><th>附件名称</th><td>${attachNames}</td></tr>
+      </table>
+      <div class="meta">打印时间：${new Date().toLocaleString('zh-CN')}</div>
+      <script>window.onload = function() { window.print(); }<\/script>
+    </body>
+    </html>
+  `)
+  printWindow.document.close()
+}
+
+async function exportFollowupsEnhanced() {
+  let dataToExport = filteredFollowups.value
+  if (dataToExport.length === 0) {
+    ElMessage.warning('暂无跟进记录可导出')
+    return
+  }
+  const ExcelJS = (await import('exceljs')).default
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+  const worksheet = workbook.addWorksheet('跟进记录')
+  const titleRow = worksheet.addRow([`客户跟进记录 - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
+  titleRow.alignment = { horizontal: 'center' }
+  worksheet.mergeCells('A1:J1')
+  worksheet.addRow([])
+  const headers = ['跟进ID', '客户名称', '所属分组', '跟进日期', '沟通方式', '跟进详情', '关联PO号', '下次跟进时间', '操作人', '附件名称']
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+  dataToExport.forEach(f => {
+    const customer = store.customers.find(c => c.id === f.customerId)
+    const groupName = customer ? customer.group : '-'
+    const attachNames = f.attachments && f.attachments.length > 0
+      ? f.attachments.map(a => a.name).join('、')
+      : '-'
+    const row = worksheet.addRow([
+      f.id || '',
+      f.customerName || '',
+      groupName,
+      f.followupDate || '',
+      f.contactMethod || '',
+      f.content || '',
+      f.poNumber || '',
+      f.nextFollowup || '',
+      f.operator || '',
+      attachNames
+    ])
+    row.font = { name: '微软雅黑', size: 11 }
+    row.alignment = { vertical: 'middle' }
+    row.height = 22
+  })
+  const widths = [12, 15, 14, 12, 12, 30, 14, 14, 12, 20]
+  widths.forEach((w, i) => {
+    worksheet.getColumn(i + 1).width = w
+    worksheet.getColumn(i + 1).alignment = { vertical: 'middle', horizontal: 'left' }
+  })
+  const dateStr = new Date().toISOString().split('T')[0]
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `跟进记录_${dateStr}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('跟进记录导出成功')
+}
+
+function batchDeleteFollowups() {
+  if (selectedFollowupIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要操作的数据')
+    return
+  }
+  ElMessageBox.confirm(
+    `已勾选 ${selectedFollowupIds.value.length} 条跟进记录，删除不可恢复，确认执行？`,
+    '确认批量删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    selectedFollowupIds.value.forEach(id => {
+      const idx = store.customerFollowUps.findIndex(f => f.id === id)
+      if (idx > -1) {
+        store.customerFollowUps.splice(idx, 1)
+      }
+    })
+    ElMessage.success(`已删除 ${selectedFollowupIds.value.length} 条跟进记录`)
+    selectedFollowupIds.value = []
+  }).catch(() => {})
+}
+
 
 
 watch(() => store.customers, () => {}, { deep: true })
@@ -1312,6 +1668,44 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 
 .el-table td {
   font-size: 13px;
+}
+
+.move-group-info {
+  padding: 12px 16px;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 4px;
+  color: #409eff;
+  margin-bottom: 16px;
+}
+
+.move-group-info p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.export-preview-info {
+  padding: 10px 14px;
+  background: #f0f9eb;
+  border: 1px solid #e1f3d8;
+  border-radius: 4px;
+  color: #67c23a;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.export-preview-info p {
+  margin: 0;
+}
+
+.followup-detail-dialog :deep(.el-descriptions__label) {
+  width: 120px;
+  font-weight: 600;
+  background: #f5f7fa;
+}
+
+.followup-detail-dialog :deep(.el-descriptions__content) {
+  min-height: 40px;
 }
 </style>
 

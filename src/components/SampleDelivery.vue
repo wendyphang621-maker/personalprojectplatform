@@ -13,10 +13,23 @@
           style="width: 200px"
         />
         <el-select 
+          v-model="filterCustomer" 
+          placeholder="按客户筛选" 
+          clearable
+          style="width: 150px"
+        >
+          <el-option 
+            v-for="c in customerFilterOptions" 
+            :key="c" 
+            :label="c" 
+            :value="c"
+          />
+        </el-select>
+        <el-select 
           v-model="filterModel" 
           placeholder="按机型筛选" 
           clearable
-          style="width: 160px"
+          style="width: 140px"
         >
           <el-option 
             v-for="m in modelFilterOptions" 
@@ -29,13 +42,26 @@
           v-model="filterLogistics" 
           placeholder="按物流筛选" 
           clearable
-          style="width: 140px"
+          style="width: 130px"
         >
           <el-option 
             v-for="l in logisticsFilterOptions" 
             :key="l" 
             :label="l" 
             :value="l"
+          />
+        </el-select>
+        <el-select 
+          v-model="filterStatus" 
+          placeholder="按状态筛选" 
+          clearable
+          style="width: 120px"
+        >
+          <el-option 
+            v-for="s in statusFilterOptions" 
+            :key="s" 
+            :label="s" 
+            :value="s"
           />
         </el-select>
         <el-button type="primary" @click="openAddDialog">新增寄样</el-button>
@@ -103,9 +129,10 @@
           {{ row.remark || '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
+          <el-button size="small" type="primary" @click="openRowPreview(row)">预览</el-button>
           <el-button size="small" type="danger" @click="handleDeleteSample(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -166,6 +193,37 @@
         <el-button type="primary" @click="confirmExport">确认导出</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog 
+      v-model="showRowPreview" 
+      title="样机寄样详情" 
+      width="700px"
+      fullscreen
+      @close="showRowPreview = false"
+    >
+      <el-descriptions 
+        v-if="currentPreviewRow" 
+        :column="2" 
+        border 
+        title="基本信息"
+      >
+        <el-descriptions-item label="样机编号">{{ currentPreviewRow.id || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="客户名称">{{ currentPreviewRow.customer_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="对接人">{{ currentPreviewRow.contact || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="机型">{{ currentPreviewRow.model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="数量">{{ currentPreviewRow.qty || currentPreviewRow.sampleQty || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ currentPreviewRow.status || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="物流方式">{{ currentPreviewRow.logistics || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="物流单号">{{ currentPreviewRow.tracking_no || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="发送日期">{{ currentPreviewRow.send_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="收货地区">{{ currentPreviewRow.area || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">{{ currentPreviewRow.remark || '-' }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="showRowPreview = false">关闭</el-button>
+        <el-button type="primary" @click="printRow">打印</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -173,17 +231,21 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { store, deleteSampleDelivery } from '../store.js'
-import { exportToExcel } from '../utils/excelExport.js'
+import ExcelJS from 'exceljs'
 import SampleFormDialog from './SampleFormDialog.vue'
 
 const searchKeyword = ref('')
+const filterCustomer = ref('')
 const filterModel = ref('')
 const filterLogistics = ref('')
+const filterStatus = ref('')
 const showDialog = ref(false)
 const editingRow = ref(null)
 const currentPage = ref(1)
 const pageSize = 15
 const showPreviewDialog = ref(false)
+const showRowPreview = ref(false)
+const currentPreviewRow = ref(null)
 const sortProp = ref('send_date')
 const sortOrder = ref('descending')
 const sampleSelection = ref([])
@@ -215,6 +277,18 @@ const logisticsFilterOptions = computed(() => {
   return Array.from(logistics).sort()
 })
 
+const customerFilterOptions = computed(() => {
+  const names = new Set()
+  store.sampleDeliveries.forEach(s => {
+    if (s.customer_name) names.add(s.customer_name)
+  })
+  return Array.from(names).sort()
+})
+
+const statusFilterOptions = computed(() => {
+  return ['待寄出', '运输中', '已签收', '异常']
+})
+
 const filteredSamples = computed(() => {
   let data = [...store.sampleDeliveries]
   if (searchKeyword.value) {
@@ -223,11 +297,17 @@ const filteredSamples = computed(() => {
       (s.customer_name || '').toLowerCase().includes(keyword)
     )
   }
+  if (filterCustomer.value) {
+    data = data.filter(s => s.customer_name === filterCustomer.value)
+  }
   if (filterModel.value) {
     data = data.filter(s => s.model === filterModel.value)
   }
   if (filterLogistics.value) {
     data = data.filter(s => s.logistics === filterLogistics.value)
+  }
+  if (filterStatus.value) {
+    data = data.filter(s => s.status === filterStatus.value)
   }
   return data
 })
@@ -285,10 +365,13 @@ async function handleDeleteSample(row) {
 }
 
 async function batchDeleteSamples() {
-  if (sampleSelection.value.length === 0) return
+  if (sampleSelection.value.length === 0) {
+    ElMessage.warning('请先勾选需要操作的数据')
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `确认批量删除 ${sampleSelection.value.length} 条寄样记录？此操作不可恢复`,
+      `已勾选 ${sampleSelection.value.length} 条数据，删除不可恢复，确认执行？`,
       '批量删除确认',
       { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
     )
@@ -315,19 +398,127 @@ function showExportPreview() {
 }
 
 function confirmExport() {
-  const headers = ['寄样编号', '客户名称', '机型', '收货地区', '物流方式', '运单号', '发货日期', '备注']
-  const data = sortedAndFiltered.value.map(s => [
+  const headers = ['样机编号', '客户名称', '对接人', '机型', '数量', '物流方式', '物流单号', '发送日期', '状态', '备注']
+  const exportData = sortedAndFiltered.value.map(s => [
     s.id || '-',
     s.customer_name || '-',
+    s.contact || '-',
     s.model || '-',
-    s.area || '-',
+    s.qty || s.sampleQty || '-',
     s.logistics || '-',
     s.tracking_no || '-',
     s.send_date || '-',
+    s.status || '-',
     s.remark || '-'
   ])
-  exportToExcel('寄样记录', headers, data)
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+
+  const worksheet = workbook.addWorksheet('样机寄样')
+
+  const titleRow = worksheet.addRow([`样机寄样台账 - ${new Date().toLocaleDateString('zh-CN')}`])
+  titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
+  titleRow.alignment = { horizontal: 'center' }
+  worksheet.mergeCells(`A1:J1`)
+
+  worksheet.addRow([])
+
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = { name: '微软雅黑', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 28
+
+  exportData.forEach(rowData => {
+    const row = worksheet.addRow(rowData)
+    row.font = { name: '微软雅黑', size: 11 }
+    row.alignment = { vertical: 'middle' }
+    row.height = 22
+  })
+
+  const columnWidths = [14, 14, 12, 12, 8, 12, 16, 12, 10, 15]
+  headers.forEach((_, index) => {
+    const col = worksheet.getColumn(index + 1)
+    col.width = columnWidths[index] || 12
+    col.alignment = { vertical: 'middle', horizontal: 'left' }
+  })
+
+  const lastRow = exportData.length + 2
+  if (exportData.length > 0) {
+    const range = worksheet.getCell(`A3:J${lastRow}`)
+    range.border = {
+      top: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      left: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      bottom: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+      right: { style: 'thin', color: { argb: 'FFd0d0d0' } }
+    }
+  }
+
+  worksheet.freezePanes = 'A3'
+
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  const filename = `样机寄样_${y}${m}${d}.xlsx`
+
+  workbook.xlsx.writeBuffer().then(buffer => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  })
   showPreviewDialog.value = false
+}
+
+function openRowPreview(row) {
+  currentPreviewRow.value = row
+  showRowPreview.value = true
+}
+
+function printRow() {
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return
+  const row = currentPreviewRow.value
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>样机寄样详情 - ${row.id}</title>
+      <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; padding: 40px; }
+        h1 { text-align: center; color: #303133; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        td { padding: 12px; border: 1px solid #dcdfe6; font-size: 14px; }
+        td.label { background: #f5f7fa; font-weight: bold; width: 120px; color: #606266; }
+      </style>
+    </head>
+    <body>
+      <h1>样机寄样详情</h1>
+      <table>
+        <tr><td class="label">样机编号</td><td>${row.id || '-'}</td></tr>
+        <tr><td class="label">客户名称</td><td>${row.customer_name || '-'}</td></tr>
+        <tr><td class="label">对接人</td><td>${row.contact || '-'}</td></tr>
+        <tr><td class="label">机型</td><td>${row.model || '-'}</td></tr>
+        <tr><td class="label">数量</td><td>${row.qty || row.sampleQty || '-'}</td></tr>
+        <tr><td class="label">物流方式</td><td>${row.logistics || '-'}</td></tr>
+        <tr><td class="label">物流单号</td><td>${row.tracking_no || '-'}</td></tr>
+        <tr><td class="label">发送日期</td><td>${row.send_date || '-'}</td></tr>
+        <tr><td class="label">状态</td><td>${row.status || '-'}</td></tr>
+        <tr><td class="label">备注</td><td>${row.remark || '-'}</td></tr>
+      </table>
+    </body>
+    </html>
+  `)
+  printWindow.document.close()
+  printWindow.onload = () => {
+    printWindow.print()
+  }
 }
 </script>
 
