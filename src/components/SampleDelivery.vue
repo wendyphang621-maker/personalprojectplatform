@@ -66,6 +66,8 @@
         </el-select>
         <el-button type="primary" @click="openAddDialog">新增寄样</el-button>
         <el-button @click="showExportPreview">导出Excel</el-button>
+        <el-button type="warning" @click="triggerSampleImport">导入Excel</el-button>
+        <input type="file" ref="sampleImportInput" accept=".xlsx,.xls" style="display: none" @change="handleSampleImport" />
         <el-button type="danger" :disabled="sampleSelection.length === 0" @click="batchDeleteSamples">批量删除 ({{ sampleSelection.length }})</el-button>
       </div>
     </div>
@@ -233,6 +235,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { store, deleteSampleDelivery } from '../store.js'
 import ExcelJS from 'exceljs'
 import SampleFormDialog from './SampleFormDialog.vue'
+import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 
 const searchKeyword = ref('')
 const filterCustomer = ref('')
@@ -249,6 +252,7 @@ const currentPreviewRow = ref(null)
 const sortProp = ref('send_date')
 const sortOrder = ref('descending')
 const sampleSelection = ref([])
+const sampleImportInput = ref(null)
 
 const customerOptions = computed(() => {
   const names = new Set()
@@ -519,6 +523,55 @@ function printRow() {
   printWindow.onload = () => {
     printWindow.print()
   }
+}
+
+function triggerSampleImport() {
+  sampleImportInput.value?.click()
+}
+
+async function handleSampleImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.sampleDeliveries,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条寄样数据，是否导入？\n注意：相同ID的记录将被覆盖`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(() => {
+    result.data.forEach(sample => {
+      const idx = store.sampleDeliveries.findIndex(s => s.id === sample.id)
+      if (idx > -1) {
+        store.sampleDeliveries[idx] = { ...store.sampleDeliveries[idx], ...sample }
+      } else {
+        store.sampleDeliveries.push({
+          id: sample.id || `sd${Date.now()}`,
+          customer_name: sample.customer_name || '',
+          model: sample.model || '',
+          qty: sample.qty || 1,
+          send_date: sample.send_date || '',
+          area: sample.area || '',
+          logistics: sample.logistics || '',
+          tracking_no: sample.tracking_no || '',
+          freight: sample.freight || 0,
+          status: sample.status || '待发货',
+          remark: sample.remark || ''
+        })
+      }
+    })
+    ElMessage.success(`成功导入 ${result.data.length} 条寄样数据`)
+  }).catch(() => {})
 }
 </script>
 

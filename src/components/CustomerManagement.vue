@@ -9,6 +9,8 @@
             <el-button type="primary" @click="handleAddCustomer">新增客户</el-button>
             <el-button @click="previewCustomers">预览</el-button>
             <el-button @click="exportCustomers">导出Excel</el-button>
+            <el-button type="warning" @click="triggerCustomerImport">导入Excel</el-button>
+            <input type="file" ref="customerImportInput" accept=".xlsx,.xls" style="display: none" @change="handleCustomerImport" />
             <el-button type="success" :disabled="selectedCustomerIds.length === 0" @click="openMoveGroupDialog">
               批量分配分组
               <span v-if="selectedCustomerIds.length > 0">（{{ selectedCustomerIds.length }}）</span>
@@ -94,6 +96,8 @@
             <el-button type="primary" @click="handleAddFollowup">新增记录</el-button>
             <el-button @click="openFollowupPreview">导出Excel</el-button>
             <el-button type="success" @click="exportFollowupsEnhanced">增强导出</el-button>
+            <el-button type="warning" @click="triggerFollowupImport">导入Excel</el-button>
+            <input type="file" ref="followupImportInput" accept=".xlsx,.xls" style="display: none" @change="handleFollowupImport" />
             <el-button type="danger" :disabled="selectedFollowupIds.length === 0" @click="batchDeleteFollowups">
               批量删除
               <span v-if="selectedFollowupIds.length > 0">（{{ selectedFollowupIds.length }}）</span>
@@ -156,6 +160,8 @@
           <div class="group-actions-bar">
             <el-button type="primary" @click="showAddGroupDialog = true">新增分组</el-button>
             <el-button type="success" @click="showGroupExportDialog = true">导出Excel</el-button>
+            <el-button type="warning" @click="triggerGroupImport">导入Excel</el-button>
+            <input type="file" ref="groupImportInput" accept=".xlsx,.xls" style="display: none" @change="handleGroupImport" />
           </div>
           <el-dialog v-model="showAddGroupDialog" :title="isEditingGroup ? '编辑客户分组' : '新增客户分组'" width="400px">
             <el-form :model="newGroupForm" label-width="80px">
@@ -466,6 +472,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase } from '../supabase.js'
 import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
@@ -499,6 +506,11 @@ const followupDate = ref('')
 const showCustomerDialog = ref(false)
 const showFollowupDialog = ref(false)
 const showAddGroupDialog = ref(false)
+
+// 导入文件输入引用
+const customerImportInput = ref(null)
+const followupImportInput = ref(null)
+const groupImportInput = ref(null)
 const showCustomerPreviewDialog = ref(false)
 const showAttachmentDialog = ref(false)
 const showFollowupPreview = ref(false)
@@ -1053,6 +1065,162 @@ function exportCustomers() {
     c.id, c.name, c.group, c.country || '', c.region || '', c.company || '', c.email || '', c.phone || '', c.address || '', c.firstContactDate || ''
   ])
   exportToExcel('客户台账', headers, data)
+}
+
+// 触发文件选择
+function triggerCustomerImport() {
+  customerImportInput.value?.click()
+}
+
+// 处理客户导入
+async function handleCustomerImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  // 重置 input 以便可以再次选择相同文件
+  event.target.value = ''
+
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.customers,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  // 确认导入
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条客户数据，是否导入？\n注意：相同ID的客户将被覆盖`,
+    '确认导入',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info'
+    }
+  ).then(() => {
+    // 导入数据
+    result.data.forEach(customer => {
+      const idx = store.customers.findIndex(c => c.id === customer.id)
+      if (idx > -1) {
+        // 更新现有客户
+        store.customers[idx] = { ...store.customers[idx], ...customer }
+      } else {
+        // 添加新客户
+        store.customers.push({
+          id: customer.id || `c${Date.now()}`,
+          name: customer.name || '',
+          group: customer.group || '',
+          country: customer.country || '',
+          region: customer.region || '',
+          company: customer.company || '',
+          email: customer.email || '',
+          phone: customer.phone || '',
+          model: customer.model || '',
+          firstContactDate: customer.firstContactDate || '',
+          localMaterialPath: '',
+          attachments: [],
+          remark: customer.remark || ''
+        })
+      }
+    })
+    ElMessage.success(`成功导入 ${result.data.length} 条客户数据`)
+  }).catch(() => {})
+}
+
+// 触发跟进记录导入
+function triggerFollowupImport() {
+  followupImportInput.value?.click()
+}
+
+// 处理跟进记录导入
+async function handleFollowupImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.customerFollowUps,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条跟进记录，是否导入？\n注意：相同ID的记录将被覆盖`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(() => {
+    result.data.forEach(followup => {
+      const idx = store.customerFollowUps.findIndex(f => f.id === followup.id)
+      if (idx > -1) {
+        store.customerFollowUps[idx] = { ...store.customerFollowUps[idx], ...followup }
+      } else {
+        store.customerFollowUps.push({
+          id: followup.id || `fu${Date.now()}`,
+          customerId: followup.customerId || '',
+          customerName: followup.customerName || '',
+          followupDate: followup.followupDate || '',
+          content: followup.content || '',
+          result: followup.result || '',
+          contactMethod: followup.contactMethod || '',
+          poNumber: followup.poNumber || '',
+          nextFollowup: followup.nextFollowup || '',
+          operator: followup.operator || '',
+          remark: followup.remark || ''
+        })
+      }
+    })
+    ElMessage.success(`成功导入 ${result.data.length} 条跟进记录`)
+  }).catch(() => {})
+}
+
+// 触发客户分组导入
+function triggerGroupImport() {
+  groupImportInput.value?.click()
+}
+
+// 处理客户分组导入
+async function handleGroupImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+
+  // 客户分组的字段映射
+  const groupFieldMapping = [
+    { excelHeader: '分组名称', dataField: 'name' },
+    { excelHeader: '客户列表', dataField: 'customers' }
+  ]
+
+  const result = await importFromExcel(file, {
+    fieldMapping: groupFieldMapping,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 个客户分组，是否导入？`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(() => {
+    result.data.forEach(group => {
+      if (group.name && !store.customerGroups.includes(group.name)) {
+        store.customerGroups.push(group.name)
+      }
+    })
+    ElMessage.success(`成功导入 ${result.data.length} 个客户分组`)
+  }).catch(() => {})
 }
 
 const followupPreviewData = computed(() => {

@@ -21,14 +21,13 @@
       <div class="spacer"></div>
       <el-button type="primary" @click="handleAdd">新增</el-button>
       <el-button @click="downloadTemplate">下载模板</el-button>
-      <el-button @click="triggerImport">导入Excel</el-button>
+      <el-button type="warning" @click="triggerImport">导入Excel</el-button>
+      <input ref="importInput" type="file" accept=".xlsx,.xls" style="display: none" @change="handleImport" />
       <el-button @click="handleExport">导出Excel</el-button>
       <el-button type="danger" :disabled="selection.length === 0" @click="batchDelete">
         批量删除<template v-if="selection.length > 0">({{ selection.length }})</template>
       </el-button>
     </div>
-
-    <input ref="fileInputRef" type="file" accept=".xlsx,.xls" style="display: none" @change="handleImport" />
 
     <div class="table-toolbar">
       <el-checkbox :model-value="selectAllState" :indeterminate="indeterminateState" @change="handleSelectAll">
@@ -398,29 +397,6 @@
         <el-button type="primary" @click="printPreview">打印</el-button>
       </template>
     </el-dialog>
-
-    <el-dialog v-model="showImportDialog" title="Excel导入" width="500px">
-      <div class="import-area">
-        <el-upload
-          drag
-          :auto-upload="false"
-          :on-change="handleFileSelect"
-          :file-list="importFileList"
-          :on-remove="handleFileRemove"
-          accept=".xlsx,.xls"
-        >
-          <el-icon class="el-icon--upload"><Upload /></el-icon>
-          <div class="el-upload__text">拖拽Excel文件到此处，或<em>点击上传</em></div>
-          <template #tip>
-            <div class="el-upload__tip">仅支持 .xlsx / .xls 格式，请先下载模板填写</div>
-          </template>
-        </el-upload>
-        <div class="import-actions">
-          <el-button @click="downloadTemplate">下载模板</el-button>
-          <el-button type="primary" :disabled="importFileList.length === 0" @click="confirmImport">确认导入</el-button>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -429,17 +405,15 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import ExcelJS from 'exceljs'
 import { store } from '../store.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { importFromExcel, fieldMappingPresets } from '../utils/excelImport.js'
 
 const loading = ref(false)
 const selection = ref([])
 const showFormDialog = ref(false)
 const showPreviewDialog = ref(false)
-const showImportDialog = ref(false)
 const isEditing = ref(false)
 const formRef = ref(null)
-const fileInputRef = ref(null)
-const importFileList = ref([])
+const importInput = ref(null)
 const currentDateTime = computed(() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -947,81 +921,52 @@ async function downloadTemplate() {
 }
 
 function triggerImport() {
-  importFileList.value = []
-  showImportDialog.value = true
+  importInput.value?.click()
 }
 
-function handleFileSelect(file) {
-  importFileList.value = [file]
-}
+async function handleImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
 
-function handleFileRemove() {
-  importFileList.value = []
-}
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.deliverySchedules,
+    headerRow: 2,
+    startRow: 3
+  })
 
-async function confirmImport() {
-  if (importFileList.value.length === 0) {
-    ElMessage.warning('请先上传文件')
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
     return
   }
 
-  loading.value = true
-  try {
-    const file = importFileList.value[0].raw
-    const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(file)
-    const worksheet = workbook.worksheets[0]
-    if (!worksheet) {
-      ElMessage.error('Excel文件为空')
-      return
-    }
-
-    const rows = worksheet.getRows(4, worksheet.rowCount)
-    let importedCount = 0
-    rows.forEach(row => {
-      if (!row || !row.values || row.values.length === 0) return
-      const values = row.values
-      const poNumber = values[2] || ''
-      if (!poNumber) return
-
-      const record = {
-        id: generateId(),
-        poNumber: String(poNumber),
-        customerName: values[3] || '',
-        model: values[4] || '',
-        configColor: values[5] || '',
-        plugSpec: values[6] || '英规',
-        orderDate: values[7] || '',
-        promiseDate: values[8] || '',
-        smtDate: values[9] || '',
-        warehouseDate: values[10] || '',
-        actualShipDate: values[11] || '',
-        logistics: values[12] || '',
-        trackingNos: values[13] || '',
-        etaRemark: values[14] || '',
-        delayReason: values[15] || '',
-        latestEta: values[16] || '',
-        saudiQty: Number(values[17]) || 0,
-        uaeQty: Number(values[18]) || 0,
-        omanQty: Number(values[19]) || 0,
-        qatarQty: Number(values[20]) || 0,
-        lebanonQty: Number(values[21]) || 0,
-        clearanceDocs: values[22] || '',
-        status: values[23] || '待生产'
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条交期管控数据，是否导入？`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(() => {
+    result.data.forEach(item => {
+      const idx = store.deliverySchedules.findIndex(d => d.id === item.id)
+      if (idx > -1) {
+        store.deliverySchedules[idx] = { ...store.deliverySchedules[idx], ...item }
+      } else {
+        store.deliverySchedules.push({
+          id: item.id || `ds${Date.now()}`,
+          orderId: item.orderId || '',
+          customerName: item.customerName || '',
+          model: item.model || '',
+          orderQty: item.orderQty || 0,
+          shippedQty: item.shippedQty || 0,
+          requiredDate: item.requiredDate || '',
+          estimatedDate: item.estimatedDate || '',
+          actualDate: item.actualDate || '',
+          status: item.status || '进行中',
+          remark: item.remark || ''
+        })
       }
-      store.deliverySchedules.push(record)
-      importedCount++
     })
-
-    showImportDialog.value = false
-    importFileList.value = []
-    ElMessage.success(`成功导入 ${importedCount} 条数据`)
-  } catch (e) {
-    console.error('Import error:', e)
-    ElMessage.error('导入失败：' + e.message)
-  } finally {
-    loading.value = false
-  }
+    ElMessage.success(`成功导入 ${result.data.length} 条交期管控数据`)
+  }).catch(() => {})
 }
 
 function printPreview() {
@@ -1152,17 +1097,6 @@ function printPreview() {
   margin: 0;
   color: #909399;
   font-size: 13px;
-}
-
-.import-area {
-  padding: 12px;
-}
-
-.import-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 16px;
 }
 
 .table-header th {

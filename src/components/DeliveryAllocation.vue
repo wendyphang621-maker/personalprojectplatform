@@ -427,6 +427,7 @@ import ExcelJS from 'exceljs'
 import { store } from '../store.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
+import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 
 const loading = ref(false)
 const selection = ref([])
@@ -997,67 +998,86 @@ async function confirmImport() {
   loading.value = true
   try {
     const file = importFileList.value[0].raw
-    const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(file.arrayBuffer())
-    const worksheet = workbook.worksheets[0]
 
-    if (!worksheet) {
-      ElMessage.error('文件为空')
+    // 使用 importFromExcel 工具函数
+    const result = await importFromExcel(file, {
+      fieldMapping: fieldMappingPresets.deliveryAllocations,
+      headerRow: 2,
+      startRow: 3,
+      transformRow: (rowData) => {
+        // 转换数据类型
+        return {
+          id: rowData.id || '',
+          poNumber: rowData.poNumber || '',
+          ciNumber: rowData.ciNumber || '',
+          customerName: rowData.customerName || '',
+          customerGroup: rowData.customerGroup || '',
+          model: rowData.model || '',
+          hwConfig: rowData.hwConfig || '',
+          plugSpec: rowData.plugSpec || '英规',
+          orderQty: Number(rowData.orderQty) || 0,
+          allocatedQty: Number(rowData.allocatedQty) || 0,
+          warehouse: rowData.warehouse || '深圳仓',
+          logistics: rowData.logistics || '',
+          saudiQty: Number(rowData.saudiQty) || 0,
+          uaeQty: Number(rowData.uaeQty) || 0,
+          omanQty: Number(rowData.omanQty) || 0,
+          qatarQty: Number(rowData.qatarQty) || 0,
+          lebanonQty: Number(rowData.lebanonQty) || 0,
+          certRemark: rowData.certRemark || '',
+          isSample: rowData.isSample || '否',
+          remark: rowData.remark || ''
+        }
+      }
+    })
+
+    if (!result.success) {
+      ElMessage.error(result.message || '导入失败')
       loading.value = false
       return
     }
 
-    const rows = []
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber > 3) {
-        const values = row.values
-        if (values.length > 1) {
-          rows.push({
-            id: values[1] || '',
-            poNumber: values[2] || '',
-            ciNumber: values[3] || '',
-            customerName: values[4] || '',
-            customerGroup: values[5] || '',
-            model: values[6] || '',
-            hwConfig: values[7] || '',
-            plugSpec: values[8] || '英规',
-            orderQty: Number(values[9]) || 0,
-            allocatedQty: Number(values[10]) || 0,
-            warehouse: values[12] || '深圳仓',
-            logistics: values[13] || '',
-            saudiQty: Number(values[14]) || 0,
-            uaeQty: Number(values[15]) || 0,
-            omanQty: Number(values[16]) || 0,
-            qatarQty: Number(values[17]) || 0,
-            lebanonQty: Number(values[18]) || 0,
-            certRemark: values[19] || '',
-            isSample: values[20] || '否',
-            remark: values[21] || ''
-          })
-        }
-      }
-    })
+    // 确认导入
+    ElMessageBox.confirm(
+      `检测到 ${result.data.length} 条出货分配数据，是否导入？`,
+      '确认导入',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    ).then(() => {
+      let imported = 0
+      result.data.forEach(item => {
+        if (item.poNumber && item.customerName && item.model) {
+          // 检查是否已存在（根据ID或PO+客户+机型组合判断）
+          const existingIndex = store.deliveryAllocations.findIndex(d => d.id === item.id && item.id)
 
-    let imported = 0
-    let skipped = 0
-    rows.forEach(item => {
-      if (item.poNumber && item.customerName && item.model) {
-        if (!item.id) {
-          item.id = generateAllocationId()
-        }
-        if (!item.customerGroup) {
-          const customer = allCustomerOptions.value.find(c => c.name === item.customerName)
-          item.customerGroup = customer?.group || ''
-        }
-        store.deliveryAllocations.push(item)
-        imported++
-      } else {
-        skipped++
-      }
-    })
+          if (!item.id) {
+            item.id = generateAllocationId()
+          }
 
-    ElMessage.success(`导入完成：成功 ${imported} 条${skipped > 0 ? `，跳过 ${skipped} 条（缺少必填字段）` : ''}`)
-    showImportDialog.value = false
+          // 自动填充客户分组
+          if (!item.customerGroup) {
+            const customer = allCustomerOptions.value.find(c => c.name === item.customerName)
+            item.customerGroup = customer?.group || ''
+          }
+
+          if (existingIndex > -1) {
+            // 更新已存在的记录
+            store.deliveryAllocations[existingIndex] = {
+              ...store.deliveryAllocations[existingIndex],
+              ...item
+            }
+          } else {
+            // 新增记录
+            store.deliveryAllocations.push(item)
+          }
+          imported++
+        }
+      })
+
+      ElMessage.success(`成功导入 ${imported} 条出货分配数据`)
+      showImportDialog.value = false
+    }).catch(() => {
+      // 用户取消
+    })
   } catch (e) {
     console.error('Import error:', e)
     ElMessage.error('导入失败：' + e.message)

@@ -6,6 +6,7 @@
           <div class="search-bar">
             <el-input v-model="searchKeyword" placeholder="搜索机型名称" clearable style="width: 250px" />
             <el-button type="primary" @click="handleAddModel">新增机型</el-button>
+            <el-button @click="triggerModelImport" type="success">导入Excel</el-button>
             <el-button @click="exportModels">导出Excel</el-button>
             <el-button type="danger" :disabled="modelSelection.length === 0" @click="batchDeleteModels">批量删除 ({{ modelSelection.length }})</el-button>
           </div>
@@ -41,6 +42,7 @@
             </el-select>
             <el-date-picker v-model="filterExpireDate" type="month" placeholder="到期月份" />
             <el-button type="primary" @click="handleAddCert">新增认证</el-button>
+            <el-button @click="triggerCertImport" type="success">导入Excel</el-button>
             <el-button @click="exportCerts">导出Excel</el-button>
             <el-button type="danger" :disabled="selectedCertIds.length === 0" @click="batchDeleteCerts">
               批量删除
@@ -353,6 +355,7 @@
           <div class="search-bar">
             <el-input v-model="supplierKeyword" placeholder="搜索供应商" clearable style="width: 250px" />
             <el-button type="primary" @click="handleAddSupplier">新增供应商</el-button>
+            <el-button @click="triggerSupplierImport" type="success">导入Excel</el-button>
             <el-button @click="exportSuppliers">导出Excel</el-button>
             <el-button type="danger" :disabled="selectedSupplierIds.length === 0" @click="batchDeleteSuppliers">
               批量删除
@@ -541,7 +544,7 @@
           <span class="stat-value unclassified">{{ parseStats.unclassifiedCount }}</span>
         </div>
       </div>
-      
+
       <div v-if="unclassifiedList.length > 0" class="unclassified-section">
         <h4>未归类素材列表</h4>
         <div class="unclassified-list">
@@ -554,11 +557,34 @@
           </div>
         </div>
       </div>
-      
+
       <template #footer>
         <el-button @click="showParseDetails = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 隐藏的文件输入框用于 Excel 导入 -->
+    <input
+      ref="modelImportInput"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleModelImport"
+    />
+    <input
+      ref="certImportInput"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleCertImport"
+    />
+    <input
+      ref="supplierImportInput"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleSupplierImport"
+    />
   </div>
 </template>
 
@@ -568,6 +594,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import FileUploader from './FileUploader.vue'
 import { store, addProductModel, updateProductModel, deleteProductModel, addCertRecord, updateCertRecord, deleteCertRecord, addSupplier, updateSupplier, deleteSupplier, syncAllFromSupabase } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 import { getAllCachedMaterials, addMaterialsToCache, deleteMaterialFromCache, batchDeleteMaterialsFromCache, clearAllCache, getCacheRootFolder, getCacheCount, validateAndCleanCache } from '../utils/materialCache.js'
 
 const props = defineProps({
@@ -698,6 +725,21 @@ const parseStats = ref({
 })
 const unclassifiedList = ref([])
 const showParseDetails = ref(false)
+
+// Excel 导入相关的文件输入框引用
+const modelImportInput = ref(null)
+const certImportInput = ref(null)
+const supplierImportInput = ref(null)
+
+// 供应商导入的 fieldMapping（手动定义）
+const supplierFieldMapping = [
+  { excelHeader: '供应商ID', dataField: 'id' },
+  { excelHeader: '供应商名称', dataField: 'name' },
+  { excelHeader: '对接人', dataField: 'contact' },
+  { excelHeader: '联系方式', dataField: 'phone' },
+  { excelHeader: '供货机型', dataField: 'models' },
+  { excelHeader: '资质文件', dataField: 'qualification' }
+]
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.ico', '.tiff', '.tif', '.svg', '.heic', '.heif']
 const MAX_THUMBNAIL_WIDTH = 800
@@ -2053,6 +2095,136 @@ function exportSuppliers() {
     s.id, s.name, s.contact, s.phone, (Array.isArray(s.models) ? s.models : []).join(','), s.qualification
   ])
   exportToExcel('供应商台账', headers, data)
+}
+
+// Excel 导入相关函数
+
+// 机型参数库导入
+function triggerModelImport() {
+  modelImportInput.value?.click()
+}
+
+async function handleModelImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: fieldMappingPresets.productModels,
+      transformRow: (rowData) => {
+        // 处理 certifications 字段，将逗号分隔的字符串转为数组
+        if (rowData.certifications && typeof rowData.certifications === 'string') {
+          rowData.certifications = rowData.certifications.split(',').map(c => c.trim()).filter(c => c)
+        }
+        return rowData
+      }
+    })
+
+    showImportResult(result)
+
+    if (result.success && result.data) {
+      // 将导入的数据添加到 store
+      result.data.forEach(item => {
+        // 检查是否已存在相同 ID 的机型
+        const existingIndex = store.productModels.findIndex(m => m.id === item.id)
+        if (existingIndex > -1) {
+          // 更新现有机型
+          Object.assign(store.productModels[existingIndex], item)
+        } else {
+          // 添加新机型
+          addProductModel(item)
+        }
+      })
+    }
+  } catch (error) {
+    ElMessage.error(`导入失败: ${error.message}`)
+  } finally {
+    // 清空文件输入
+    event.target.value = ''
+  }
+}
+
+// 合规认证档案导入
+function triggerCertImport() {
+  certImportInput.value?.click()
+}
+
+async function handleCertImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: fieldMappingPresets.certRecords
+    })
+
+    showImportResult(result)
+
+    if (result.success && result.data) {
+      // 将导入的数据添加到 store
+      result.data.forEach(item => {
+        // 检查是否已存在相同 ID 的认证
+        const existingIndex = store.certRecords.findIndex(c => c.id === item.id)
+        if (existingIndex > -1) {
+          // 更新现有认证
+          Object.assign(store.certRecords[existingIndex], item)
+        } else {
+          // 添加新认证
+          addCertRecord(item)
+        }
+      })
+    }
+  } catch (error) {
+    ElMessage.error(`导入失败: ${error.message}`)
+  } finally {
+    // 清空文件输入
+    event.target.value = ''
+  }
+}
+
+// 供应商台账导入
+function triggerSupplierImport() {
+  supplierImportInput.value?.click()
+}
+
+async function handleSupplierImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: supplierFieldMapping,
+      transformRow: (rowData) => {
+        // 处理 models 字段，将逗号分隔的字符串转为数组
+        if (rowData.models && typeof rowData.models === 'string') {
+          rowData.models = rowData.models.split(',').map(m => m.trim()).filter(m => m)
+        }
+        return rowData
+      }
+    })
+
+    showImportResult(result)
+
+    if (result.success && result.data) {
+      // 将导入的数据添加到 store
+      result.data.forEach(item => {
+        // 检查是否已存在相同 ID 的供应商
+        const existingIndex = store.suppliers.findIndex(s => s.id === item.id)
+        if (existingIndex > -1) {
+          // 更新现有供应商
+          Object.assign(store.suppliers[existingIndex], item)
+        } else {
+          // 添加新供应商
+          addSupplier(item)
+        }
+      })
+    }
+  } catch (error) {
+    ElMessage.error(`导入失败: ${error.message}`)
+  } finally {
+    // 清空文件输入
+    event.target.value = ''
+  }
 }
 
 watch(activeTab, (newTab) => {

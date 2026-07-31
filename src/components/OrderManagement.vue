@@ -38,6 +38,8 @@
             </el-select>
             <el-button type="primary" @click="handleAddOrder">新增订单</el-button>
             <el-button @click="showOrderPreview">预览全部</el-button>
+            <el-button type="warning" @click="triggerOrderImport">导入Excel</el-button>
+            <input type="file" ref="orderImportInput" accept=".xlsx,.xls" style="display: none" @change="handleOrderImport" />
             <el-button @click="exportOrders">导出Excel</el-button>
             <el-button type="danger" :disabled="orderSelection.length === 0" @click="batchDeleteOrders">批量删除 ({{ orderSelection.length }})</el-button>
           </div>
@@ -110,6 +112,8 @@
               <el-option label="异常" value="exception" />
             </el-select>
             <el-button type="primary" @click="handleAddLogistics">录入运单</el-button>
+            <el-button type="warning" @click="triggerLogisticsImport">导入Excel</el-button>
+            <input type="file" ref="logisticsImportInput" accept=".xlsx,.xls" style="display: none" @change="handleLogisticsImport" />
             <el-button type="danger" :disabled="logisticsSelection.length === 0" @click="batchDeleteLogistics">批量删除 ({{ logisticsSelection.length }})</el-button>
           </div>
           <div class="logistics-stats">
@@ -181,6 +185,8 @@
             <el-button type="primary" @click="handleAddBill">新增账单</el-button>
             <el-button type="success" @click="handleGenerateMonthlyBills">生成本月账单</el-button>
             <el-button @click="showBillPreview">预览</el-button>
+            <el-button type="warning" @click="triggerBillImport">导入Excel</el-button>
+            <input type="file" ref="billImportInput" accept=".xlsx,.xls" style="display: none" @change="handleBillImport" />
             <el-button @click="exportBills">导出Excel</el-button>
           </div>
           <div class="bill-summary">
@@ -570,6 +576,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 import { exportToExcel } from '../utils/excelExport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 
 const props = defineProps({
   currentSubPage: {
@@ -625,6 +632,10 @@ const isEditingBill = ref(false)
 
 const orderSelection = ref([])
 const logisticsSelection = ref([])
+
+const orderImportInput = ref(null)
+const logisticsImportInput = ref(null)
+const billImportInput = ref(null)
 
 const orderForm = reactive({
   id: '',
@@ -1261,6 +1272,118 @@ function exportBills() {
   exportToExcel('物流对账', headers, data)
 }
 
+function triggerOrderImport() {
+  orderImportInput.value?.click()
+}
+
+async function handleOrderImport(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: fieldMappingPresets.orders,
+      validateRow: (row) => {
+        if (!row.customerId && !row.customerName) {
+          return { valid: false, error: '缺少客户信息' }
+        }
+        if (!row.model) {
+          return { valid: false, error: '缺少机型信息' }
+        }
+        return { valid: true }
+      }
+    })
+    
+    if (result.success && result.data.length > 0) {
+      let importedCount = 0
+      result.data.forEach(row => {
+        try {
+          const orderData = {
+            id: row.id || generateOrderNumber(),
+            customerId: row.customerId || '',
+            customerName: row.customerName || '',
+            model: row.model || '',
+            qty: row.qty || 1,
+            bookingDate: row.bookingDate || new Date().toISOString().split('T')[0],
+            logisticsNo: row.logisticsNo || '',
+            status: row.status || 'pending',
+            amount: row.amount || 0,
+            currency: row.currency || 'USD',
+            bulkFreight: row.bulkFreight || 0,
+            orderType: row.orderType || 'bulk_order',
+            balanceSettled: row.balanceSettled || false
+          }
+          addSalesOrder(orderData)
+          importedCount++
+        } catch (e) {
+          console.error('导入订单失败:', e)
+        }
+      })
+      ElMessage.success(`成功导入 ${importedCount} 条订单`)
+    }
+    
+    showImportResult(result)
+  } catch (error) {
+    ElMessage.error('导入失败: ' + error.message)
+  }
+  
+  event.target.value = ''
+}
+
+function triggerLogisticsImport() {
+  logisticsImportInput.value?.click()
+}
+
+async function handleLogisticsImport(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: fieldMappingPresets.logistics,
+      validateRow: (row) => {
+        if (!row.logisticsNo) {
+          return { valid: false, error: '缺少运单号' }
+        }
+        return { valid: true }
+      }
+    })
+    
+    if (result.success && result.data.length > 0) {
+      let importedCount = 0
+      result.data.forEach(row => {
+        try {
+          const logisticsData = {
+            id: row.id || Date.now().toString() + '_' + importedCount,
+            customerId: row.customerId || '',
+            customerName: row.customerName || '',
+            logisticsNo: row.logisticsNo || '',
+            sendDate: row.sendDate || new Date().toISOString().split('T')[0],
+            expectedSignDate: row.expectedSignDate || '',
+            status: row.status || 'pending',
+            trackingInfo: row.trackingInfo || '',
+            model: row.model || '',
+            sampleQty: row.sampleQty || 0,
+            freightAmount: row.freightAmount || 0,
+            settled: row.settled || false
+          }
+          store.sampleDeliveries.unshift(logisticsData)
+          importedCount++
+        } catch (e) {
+          console.error('导入运单失败:', e)
+        }
+      })
+      ElMessage.success(`成功导入 ${importedCount} 条运单`)
+    }
+    
+    showImportResult(result)
+  } catch (error) {
+    ElMessage.error('导入失败: ' + error.message)
+  }
+  
+  event.target.value = ''
+}
+
 
 
 function deleteSampleDelivery(id) {
@@ -1268,6 +1391,52 @@ function deleteSampleDelivery(id) {
   if (idx > -1) {
     store.sampleDeliveries.splice(idx, 1)
   }
+}
+
+function triggerBillImport() {
+  billImportInput.value?.click()
+}
+
+async function handleBillImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.logisticsBills,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条费用对账数据，是否导入？`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(() => {
+    result.data.forEach(bill => {
+      const idx = store.logisticsBills.findIndex(b => b.id === bill.id)
+      if (idx > -1) {
+        store.logisticsBills[idx] = { ...store.logisticsBills[idx], ...bill }
+      } else {
+        store.logisticsBills.push({
+          id: bill.id || `lb${Date.now()}`,
+          logisticsNo: bill.logisticsNo || '',
+          customerName: bill.customerName || '',
+          country: bill.country || '',
+          freightForwarder: bill.freightForwarder || '',
+          amount: bill.amount || 0,
+          status: bill.status || 'unpaid',
+          verificationDate: bill.verificationDate || ''
+        })
+      }
+    })
+    ElMessage.success(`成功导入 ${result.data.length} 条费用对账数据`)
+  }).catch(() => {})
 }
 
 watch(() => store.salesOrders, () => {}, { deep: true })
