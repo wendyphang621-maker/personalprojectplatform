@@ -60,7 +60,7 @@ npm install
 问题1：存储桶不存在
 解决方案：
 1. 在 Supabase Dashboard → Storage 中创建存储桶
-2. 存储桶名称：customer-files（或 customer_light_files）
+2. 存储桶名称：customer_light_files
 3. 访问权限设置为 Private
 
 问题2：文件上传失败

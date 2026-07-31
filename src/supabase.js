@@ -348,7 +348,7 @@ export async function getSupabase() {
 export async function testSupabaseConnection(url, key, bucketName = 'customer_light_files') {
   const trimmedUrl = url.trim()
   const trimmedKey = key.trim()
-  const trimmedBucket = bucketName.trim()
+  const trimmedBucket = normalizeBucketName(bucketName) || 'customer_light_files'
   
   try {
     const { createClient } = await import('@supabase/supabase-js')
@@ -388,12 +388,13 @@ export async function testSupabaseConnection(url, key, bucketName = 'customer_li
 }
 
 export function saveSupabaseConfig(url, key, bucketName = 'customer_light_files') {
+  const normalizedBucket = normalizeBucketName(bucketName) || 'customer_light_files'
   setLocalConfigValue('supabase.SUPABASE_URL', url)
   setLocalConfigValue('supabase.SUPABASE_KEY', key)
-  setLocalConfigValue('supabase.BUCKET_NAME', bucketName)
+  setLocalConfigValue('supabase.BUCKET_NAME', normalizedBucket)
   localStorage.setItem('supabase_url', url)
   localStorage.setItem('supabase_key', key)
-  localStorage.setItem('supabase_bucket', bucketName)
+  localStorage.setItem('supabase_bucket', normalizedBucket)
   supabase = null
   console.log('[配置] Supabase配置已保存到本机私有配置')
 }
@@ -401,12 +402,14 @@ export function saveSupabaseConfig(url, key, bucketName = 'customer_light_files'
 export function getSupabaseConfig() {
   const localUrl = getLocalConfigValue('supabase.SUPABASE_URL')
   const localKey = getLocalConfigValue('supabase.SUPABASE_KEY')
-  const localBucket = getLocalConfigValue('supabase.BUCKET_NAME') || 'customer_light_files'
-  
+  const rawBucket = getLocalConfigValue('supabase.BUCKET_NAME') || localStorage.getItem('supabase_bucket') || ''
+  // 自动修正旧的错误桶名 customer-files → customer_light_files
+  const localBucket = normalizeBucketName(rawBucket) || 'customer_light_files'
+
   return {
     url: localUrl || localStorage.getItem('supabase_url') || import.meta.env.VITE_SUPABASE_URL || '',
     key: localKey || localStorage.getItem('supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-    bucket: localBucket || localStorage.getItem('supabase_bucket') || 'customer_light_files'
+    bucket: localBucket
   }
 }
 
@@ -422,7 +425,28 @@ export function clearSupabaseConfig() {
 }
 
 export function getSupabaseBucket() {
-  return getLocalConfigValue('supabase.BUCKET_NAME') || localStorage.getItem('supabase_bucket') || 'customer_light_files'
+  const raw = getLocalConfigValue('supabase.BUCKET_NAME') || localStorage.getItem('supabase_bucket') || ''
+  return normalizeBucketName(raw) || 'customer_light_files'
+}
+
+/**
+ * 桶名自动修正：将旧的各种错误桶名统一归一为 customer_light_files
+ * 修正项：customer-files / customer_files / customerfiles / light-files / customer-light-files
+ */
+function normalizeBucketName(name) {
+  if (!name || typeof name !== 'string') return ''
+  const trimmed = name.trim()
+  if (!trimmed) return ''
+  // 已是正确桶名，直接返回
+  if (trimmed === 'customer_light_files') return trimmed
+  // 命中旧错误名，统一修正
+  const wrongNames = ['customer-files', 'customer_files', 'customerfiles', 'light-files', 'customer-light-files', 'customer_light']
+  if (wrongNames.includes(trimmed.toLowerCase())) {
+    console.warn(`[配置] 检测到旧桶名 "${trimmed}"，已自动修正为 "customer_light_files"`)
+    return 'customer_light_files'
+  }
+  // 用户自定义桶名，原样返回
+  return trimmed
 }
 
 export function getLocalMode() {

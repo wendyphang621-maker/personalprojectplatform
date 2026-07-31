@@ -173,7 +173,7 @@ npm install
 
 **解决方案**:
 
-1. 在 Supabase Dashboard 中创建存储桶（名称：`customer-files`）
+1. 在 Supabase Dashboard 中创建存储桶（名称：`customer_light_files`）
 2. 设置存储桶访问权限为 **Private**
 3. 配置 Row Level Security (RLS) 策略允许访问
 
@@ -209,7 +209,7 @@ npm install
 
 1. **Supabase URL**: 项目 URL
 2. **Supabase Anon Key**: 匿名密钥
-3. **存储桶名称**: `customer-files`
+3. **存储桶名称**: `customer_light_files`
 
 ### 数据存储
 
