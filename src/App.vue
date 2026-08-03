@@ -477,7 +477,7 @@
 
 <script setup>
 import { ref, reactive, h, computed, onMounted, onUnmounted, watch } from 'vue'
-import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode } from './store.js'
+import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode, restoreSession } from './store.js'
 import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig, syncToSupabase, fetchFromSupabase } from './supabase.js'
 import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -685,6 +685,7 @@ onMounted(async () => {
   isIncognito.value = isIncognitoMode()
   
   if (isLoggedIn.value) {
+    restoreSession()
     await syncAllFromSupabase()
   }
   

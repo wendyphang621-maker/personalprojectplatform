@@ -478,6 +478,23 @@ export async function login(username, password) {
   return { success: true, user }
 }
 
+export function restoreSession() {
+  if (!authStore.currentUser) return false
+
+  const user = authStore.currentUser
+  currentUserId = user.id
+  store.user = { ...defaultUser, ...user }
+
+  const userData = loadUserData(user.id)
+  if (userData && userData.dataVersion === DATA_VERSION) {
+    Object.assign(store, userData)
+    store.user = { ...defaultUser, ...user, ...(userData.user || {}) }
+  }
+
+  console.log(`[会话恢复] 用户: ${user.username} (${user.role}), 数据版本: ${userData?.dataVersion || 'default'}`)
+  return true
+}
+
 export function logout() {
   authStore.currentUser = null
   saveAuth(authStore)
