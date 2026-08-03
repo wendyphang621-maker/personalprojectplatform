@@ -272,6 +272,8 @@
           <div v-else-if="tab.type === 'letter'" class="letter-container">
             <div class="letter-header">
               <el-button type="primary" @click="handleAddLetter">新增开发信</el-button>
+              <el-button @click="previewLetters">预览</el-button>
+              <el-button @click="exportLetters">导出Excel</el-button>
             </div>
             <div class="letter-search">
               <el-input v-model="letterKeyword" placeholder="搜索客户姓名、主题" clearable />
@@ -517,6 +519,46 @@
       </template>
     </el-dialog>
     
+    <el-dialog v-model="showLetterPreviewDialog" title="开发信存档库预览" width="900px" :close-on-click-modal="false">
+      <div class="preview-container">
+        <div class="preview-header">
+          <h2>开发信存档库</h2>
+          <p>{{ new Date().toLocaleDateString('zh-CN') }}</p>
+        </div>
+        <div class="preview-table">
+          <table>
+            <thead>
+              <tr>
+                <th>主题</th>
+                <th>客户姓名</th>
+                <th>邮箱</th>
+                <th>发送日期</th>
+                <th>状态</th>
+                <th>内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="l in filteredLetters" :key="l.id">
+                <td>{{ l.subject || '-' }}</td>
+                <td>{{ l.customerName || '-' }}</td>
+                <td>{{ l.email || '-' }}</td>
+                <td>{{ l.sendDate || '-' }}</td>
+                <td>{{ getLetterStatusLabel(l.status) }}</td>
+                <td class="preview-content-cell">{{ l.content || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="preview-summary">
+          <span>共 {{ filteredLetters.length }} 条记录</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showLetterPreviewDialog = false">关闭</el-button>
+        <el-button type="primary" @click="exportLetters">导出Excel</el-button>
+      </template>
+    </el-dialog>
+    
     <el-dialog v-model="showCertDialog" :title="isEditingCert ? '编辑证书进度' : '新增证书进度'" width="600px">
       <el-form :model="certForm" label-width="120px">
         <el-form-item label="机型">
@@ -669,6 +711,7 @@ const mapKeyword = ref('')
 
 const showTodoDialog = ref(false)
 const showLetterDialog = ref(false)
+const showLetterPreviewDialog = ref(false)
 const showMapRecordDialog = ref(false)
 
 const isEditingTodo = ref(false)
@@ -1570,6 +1613,23 @@ function confirmLetter() {
   }
 }
 
+function previewLetters() {
+  showLetterPreviewDialog.value = true
+}
+
+function exportLetters() {
+  const headers = ['主题', '客户姓名', '邮箱', '发送日期', '状态', '内容']
+  const data = filteredLetters.value.map(l => [
+    l.subject || '',
+    l.customerName || '',
+    l.email || '',
+    l.sendDate || '',
+    getLetterStatusLabel(l.status),
+    l.content || ''
+  ])
+  exportToExcel('开发信存档库', headers, data)
+}
+
 function handleAddMapRecord() {
   try {
     isEditingMapRecord.value = false
@@ -2359,5 +2419,79 @@ watch(() => store.dailyTodos, () => {}, { deep: true })
   font-size: 14px;
   background: #fafafa;
   border-radius: 8px;
+}
+
+.preview-container {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.preview-header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #1a1a2e;
+}
+
+.preview-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.preview-header p {
+  font-size: 14px;
+  color: #909399;
+  margin: 8px 0 0;
+}
+
+.preview-table {
+  overflow-x: auto;
+}
+
+.preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.preview-table th,
+.preview-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border: 1px solid #d0d0d0;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.preview-table th {
+  background: #1a1a2e;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.preview-table tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.preview-table tbody tr:hover {
+  background: #f0f5ff;
+}
+
+.preview-content-cell {
+  max-width: 300px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-summary {
+  text-align: right;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px dashed #d0d0d0;
+  font-size: 14px;
+  color: #6b7280;
 }
 </style>
