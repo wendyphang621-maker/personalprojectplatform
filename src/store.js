@@ -173,6 +173,12 @@ const defaultData = {
     { id: 'fu10', customerId: 'c3', customerName: 'Jason', followupDate: '2026-07-15', content: '确认下季度订单计划', result: 'positive', contactMethod: '视频会议', poNumber: '', nextFollowup: '2026-08-01', operator: '王聪', attachments: [] }
   ],
   
+  customerPayments: [
+    { id: 'cp1', customerId: 'c1', customerName: 'Hans', orderNo: 'PO-2026-001', orderDate: '2026-07-15', productName: '智能手机主机', specModel: 'MTK-6500-V2', quantity: 1000, unitPrice: 28, orderAmount: 28000, deliveryDate: '2026-08-15', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-16', paymentAmount: 8400, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金' },
+    { id: 'cp2', customerId: 'c2', customerName: 'Ethan', orderNo: 'PO-2026-002', orderDate: '2026-07-28', productName: '显示屏模组', specModel: 'HD+-6.91', quantity: 500, unitPrice: 60, orderAmount: 30000, deliveryDate: '2026-08-30', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-29', paymentAmount: 9000, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金' },
+    { id: 'cp3', customerId: 'c1', customerName: 'Hans', orderNo: 'PO-2026-001', orderDate: '2026-07-15', productName: '智能手机主机', specModel: 'MTK-6500-V2', quantity: 1000, unitPrice: 28, orderAmount: 28000, deliveryDate: '2026-08-15', paymentBatch: '第3笔', paymentType: '尾款', paymentDate: '2026-08-02', paymentAmount: 16800, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '60%尾款待发货' }
+  ],
+  
   developmentLetters: [
     { id: 'dl1', customerId: 'c3', sendDate: '2024-03-10', subject: '新产品介绍', content: '尊敬的Jason，您好！我们推出了新款NE76机型...', responseStatus: 'no_response' }
   ],
@@ -1099,6 +1105,7 @@ function clearOldLocalStorage() {
     'logisticsBills',
     'dailyTodos',
     'customerFollowUps',
+    'customerPayments',
     'projects',
     'stages',
     'tasks'
@@ -1206,6 +1213,7 @@ export async function syncAllFromSupabase(showToast = true) {
       { name: 'logistics_bills', key: 'logisticsBills' },
       { name: 'daily_todos', key: 'dailyTodos' },
       { name: 'customer_follow_ups', key: 'customerFollowUps' },
+      { name: 'customer_payments', key: 'customerPayments' },
       { name: 'projects', key: 'projects' },
       { name: 'stages', key: 'stages' },
       { name: 'tasks', key: 'tasks' },

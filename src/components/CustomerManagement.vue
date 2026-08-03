@@ -176,6 +176,59 @@
           </el-dialog>
       </div>
     
+    <div v-else-if="activeTab === 'payment'" class="tab-content">
+      <div class="search-bar">
+        <el-input v-model="paymentKeyword" placeholder="搜索客户姓名/订单编号" clearable style="width: 250px" />
+        <el-select v-model="paymentFilterCustomer" placeholder="选择客户" clearable style="width: 180px">
+          <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+        <el-select v-model="paymentFilterStatus" placeholder="到账状态" clearable style="width: 120px">
+          <el-option label="已到账" value="已到账" />
+          <el-option label="未到账" value="未到账" />
+        </el-select>
+        <el-button type="primary" @click="handleAddPayment">新增付款记录</el-button>
+        <el-button @click="previewPayments">预览</el-button>
+        <el-button @click="exportPayments">导出Excel</el-button>
+      </div>
+      <el-table :data="filteredPayments" border stripe>
+        <el-table-column prop="id" label="记录ID" width="100" />
+        <el-table-column prop="customerName" label="客户姓名" width="110" />
+        <el-table-column prop="orderNo" label="订单编号" width="130" />
+        <el-table-column prop="orderDate" label="订单日期" width="110" />
+        <el-table-column prop="productName" label="产品名称" width="130" />
+        <el-table-column prop="specModel" label="规格型号" width="130" />
+        <el-table-column prop="quantity" label="数量" width="80" />
+        <el-table-column prop="unitPrice" label="单价" width="80" />
+        <el-table-column prop="orderAmount" label="订单金额" width="100">
+          <template #default="{ row }">¥{{ row.orderAmount?.toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column prop="deliveryDate" label="交货日期" width="110" />
+        <el-table-column prop="paymentBatch" label="付款批次" width="90" />
+        <el-table-column prop="paymentType" label="付款类型" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.paymentType === '尾款' ? 'warning' : ''" size="small">{{ row.paymentType }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="paymentDate" label="付款日期" width="110" />
+        <el-table-column prop="paymentAmount" label="付款金额" width="110">
+          <template #default="{ row }">¥{{ row.paymentAmount?.toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column prop="paymentMethod" label="付款方式" width="110" />
+        <el-table-column label="到账状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.arrivalStatus === '已到账' ? 'success' : 'danger'" size="small">{{ row.arrivalStatus }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" @click="handleEditPayment(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDeletePayment(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+    
     <el-dialog v-model="showCustomerDialog" :title="isEditingCustomer ? '编辑客户' : '新增客户'" width="600px">
       <el-form :model="customerForm" label-width="120px">
         <el-form-item label="客户ID">
@@ -464,6 +517,140 @@
         <el-button type="primary" @click="exportGroupsEnhanced">确认导出</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showPaymentDialog" :title="isEditingPayment ? '编辑付款记录' : '新增付款记录'" width="700px">
+      <el-form :model="paymentForm" label-width="110px">
+        <el-form-item label="记录ID">
+          <el-input v-model="paymentForm.id" placeholder="自动生成，可自定义" />
+        </el-form-item>
+        <el-form-item label="选择客户">
+          <el-select v-model="paymentForm.customerId" filterable placeholder="选择客户" @change="onPaymentCustomerChange">
+            <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="客户姓名">
+          <el-input v-model="paymentForm.customerName" readonly />
+        </el-form-item>
+        <el-form-item label="订单编号">
+          <el-input v-model="paymentForm.orderNo" placeholder="如 PO-2026-001" />
+        </el-form-item>
+        <el-form-item label="订单日期">
+          <el-date-picker v-model="paymentForm.orderDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item label="产品名称">
+          <el-input v-model="paymentForm.productName" />
+        </el-form-item>
+        <el-form-item label="规格型号">
+          <el-input v-model="paymentForm.specModel" />
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="paymentForm.quantity" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="单价">
+          <el-input-number v-model="paymentForm.unitPrice" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="订单金额">
+          <el-input-number v-model="paymentForm.orderAmount" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="交货日期">
+          <el-date-picker v-model="paymentForm.deliveryDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item label="付款批次">
+          <el-select v-model="paymentForm.paymentBatch" placeholder="选择批次">
+            <el-option label="第1笔" value="第1笔" />
+            <el-option label="第2笔" value="第2笔" />
+            <el-option label="第3笔" value="第3笔" />
+            <el-option label="第4笔" value="第4笔" />
+            <el-option label="尾款" value="尾款" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="付款类型">
+          <el-select v-model="paymentForm.paymentType" placeholder="选择类型">
+            <el-option label="定金" value="定金" />
+            <el-option label="尾款" value="尾款" />
+            <el-option label="全款" value="全款" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="付款日期">
+          <el-date-picker v-model="paymentForm.paymentDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item label="付款金额">
+          <el-input-number v-model="paymentForm.paymentAmount" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="付款方式">
+          <el-select v-model="paymentForm.paymentMethod" placeholder="选择方式">
+            <el-option label="银行转账" value="银行转账" />
+            <el-option label="支付宝" value="支付宝" />
+            <el-option label="微信" value="微信" />
+            <el-option label="现金" value="现金" />
+            <el-option label="支票" value="支票" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="到账状态">
+          <el-select v-model="paymentForm.arrivalStatus" placeholder="选择状态">
+            <el-option label="已到账" value="已到账" />
+            <el-option label="未到账" value="未到账" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="paymentForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPaymentDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmPayment">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showPaymentPreviewDialog" title="付款记录预览" width="1000px" :close-on-click-modal="false">
+      <div class="preview-container">
+        <div class="preview-header">
+          <h2>客户付款记录</h2>
+          <p>{{ new Date().toLocaleDateString('zh-CN') }}</p>
+        </div>
+        <div class="preview-table">
+          <table>
+            <thead>
+              <tr>
+                <th>客户姓名</th>
+                <th>订单编号</th>
+                <th>产品名称</th>
+                <th>规格型号</th>
+                <th>订单金额</th>
+                <th>付款批次</th>
+                <th>付款类型</th>
+                <th>付款金额</th>
+                <th>付款日期</th>
+                <th>到账状态</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in filteredPayments" :key="p.id">
+                <td>{{ p.customerName || '-' }}</td>
+                <td>{{ p.orderNo || '-' }}</td>
+                <td>{{ p.productName || '-' }}</td>
+                <td>{{ p.specModel || '-' }}</td>
+                <td>{{ p.orderAmount ? '¥' + p.orderAmount.toLocaleString() : '-' }}</td>
+                <td>{{ p.paymentBatch || '-' }}</td>
+                <td>{{ p.paymentType || '-' }}</td>
+                <td>{{ p.paymentAmount ? '¥' + p.paymentAmount.toLocaleString() : '-' }}</td>
+                <td>{{ p.paymentDate || '-' }}</td>
+                <td>{{ p.arrivalStatus || '-' }}</td>
+                <td>{{ p.remark || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="preview-summary">
+          <span>共 {{ filteredPayments.length }} 条记录</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showPaymentPreviewDialog = false">关闭</el-button>
+        <el-button type="primary" @click="exportPayments">导出Excel</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -502,10 +689,16 @@ const searchKeyword = ref('')
 const filterGroup = ref('')
 const followupCustomerId = ref('')
 const followupDate = ref('')
+const paymentKeyword = ref('')
+const paymentFilterCustomer = ref('')
+const paymentFilterStatus = ref('')
 
 const showCustomerDialog = ref(false)
 const showFollowupDialog = ref(false)
 const showAddGroupDialog = ref(false)
+const showPaymentDialog = ref(false)
+const showPaymentPreviewDialog = ref(false)
+const isEditingPayment = ref(false)
 
 // 导入文件输入引用
 const customerImportInput = ref(null)
@@ -650,6 +843,27 @@ const followupForm = reactive({
   nextFollowup: ''
 })
 
+const paymentForm = reactive({
+  id: '',
+  customerId: '',
+  customerName: '',
+  orderNo: '',
+  orderDate: new Date().toISOString().split('T')[0],
+  productName: '',
+  specModel: '',
+  quantity: 0,
+  unitPrice: 0,
+  orderAmount: 0,
+  deliveryDate: '',
+  paymentBatch: '第1笔',
+  paymentType: '定金',
+  paymentDate: new Date().toISOString().split('T')[0],
+  paymentAmount: 0,
+  paymentMethod: '银行转账',
+  arrivalStatus: '未到账',
+  remark: ''
+})
+
 const customerOptions = computed(() => {
   const names = store.customers.map(c => c.name).filter(Boolean)
   if (names.length === 0) {
@@ -716,6 +930,17 @@ const filteredFollowups = computed(() => {
     const matchCustomer = !followupCustomerId.value || f.customerId === followupCustomerId.value
     const matchDate = !followupDate.value || f.followupDate === followupDate.value
     return matchCustomer && matchDate
+  })
+})
+
+const filteredPayments = computed(() => {
+  return store.customerPayments.filter(p => {
+    const matchKeyword = !paymentKeyword.value ||
+      p.customerName?.toLowerCase().includes(paymentKeyword.value.toLowerCase()) ||
+      p.orderNo?.toLowerCase().includes(paymentKeyword.value.toLowerCase())
+    const matchCustomer = !paymentFilterCustomer.value || p.customerId === paymentFilterCustomer.value
+    const matchStatus = !paymentFilterStatus.value || p.arrivalStatus === paymentFilterStatus.value
+    return matchKeyword && matchCustomer && matchStatus
   })
 })
 
@@ -1057,6 +1282,103 @@ async function handleDeleteGroup(groupName) {
   ).then(async () => {
     await deleteCustomerGroup(groupName)
   }).catch(() => {})
+}
+
+function onPaymentCustomerChange(customerId) {
+  const customer = store.customers.find(c => c.id === customerId)
+  paymentForm.customerName = customer ? customer.name : ''
+}
+
+function handleAddPayment() {
+  isEditingPayment.value = false
+  Object.assign(paymentForm, {
+    id: '',
+    customerId: '',
+    customerName: '',
+    orderNo: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    productName: '',
+    specModel: '',
+    quantity: 0,
+    unitPrice: 0,
+    orderAmount: 0,
+    deliveryDate: '',
+    paymentBatch: '第1笔',
+    paymentType: '定金',
+    paymentDate: new Date().toISOString().split('T')[0],
+    paymentAmount: 0,
+    paymentMethod: '银行转账',
+    arrivalStatus: '未到账',
+    remark: ''
+  })
+  showPaymentDialog.value = true
+}
+
+function handleEditPayment(row) {
+  isEditingPayment.value = true
+  Object.assign(paymentForm, row)
+  showPaymentDialog.value = true
+}
+
+function handleDeletePayment(row) {
+  ElMessageBox.confirm(
+    `确认删除付款记录 "${row.id}"？此操作不可恢复。`,
+    '确认删除',
+    { type: 'warning' }
+  ).then(() => {
+    const idx = store.customerPayments.findIndex(p => p.id === row.id)
+    if (idx > -1) store.customerPayments.splice(idx, 1)
+    ElMessage.success('删除成功')
+  }).catch(() => {})
+}
+
+function confirmPayment() {
+  if (!paymentForm.customerId || !paymentForm.orderNo.trim()) {
+    ElMessage.warning('请填写客户和订单编号')
+    return
+  }
+  if (!paymentForm.id.trim()) {
+    paymentForm.id = 'cp' + Date.now()
+  }
+  if (isEditingPayment.value) {
+    const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
+    if (idx > -1) {
+      const { id, ...rest } = paymentForm
+      store.customerPayments[idx] = { id, ...rest }
+    }
+  } else {
+    const { id, ...rest } = paymentForm
+    store.customerPayments.unshift({ id, ...rest })
+  }
+  ElMessage.success(isEditingPayment.value ? '更新成功' : '新增成功')
+  showPaymentDialog.value = false
+}
+
+function previewPayments() {
+  showPaymentPreviewDialog.value = true
+}
+
+function exportPayments() {
+  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
+  const data = filteredPayments.value.map(p => [
+    p.customerName || '',
+    p.orderNo || '',
+    p.orderDate || '',
+    p.productName || '',
+    p.specModel || '',
+    p.quantity || 0,
+    p.unitPrice || 0,
+    p.orderAmount || 0,
+    p.deliveryDate || '',
+    p.paymentBatch || '',
+    p.paymentType || '',
+    p.paymentDate || '',
+    p.paymentAmount || 0,
+    p.paymentMethod || '',
+    p.arrivalStatus || '',
+    p.remark || ''
+  ])
+  exportToExcel('客户付款记录', headers, data)
 }
 
 function exportCustomers() {

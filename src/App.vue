@@ -742,7 +742,8 @@ const topTabs = computed(() => {
       { name: 'main', label: '海外客户主台账' },
       { name: 'followup', label: '客户跟进记录' },
       { name: 'sample', label: '样机寄样申请' },
-      { name: 'group', label: '客户分组配置' }
+      { name: 'group', label: '客户分组配置' },
+      { name: 'payment', label: '客户付款记录' }
     ]
   }
   if (currentPage.value === 'delivery-allocation' || currentPage.value === 'delivery-schedule') {
@@ -865,7 +866,8 @@ const salesNavGroups = [
     children: [
       { key: 'customer', subKey: 'main', label: '海外客户主台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }), h('circle', { cx: '12', cy: '7', r: '4' })) },
       { key: 'customer', subKey: 'followup', label: '客户跟进记录', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) },
-      { key: 'customer', subKey: 'group', label: '客户分组配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) }
+      { key: 'customer', subKey: 'group', label: '客户分组配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }), h('circle', { cx: '9', cy: '7', r: '4' }), h('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }), h('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })) },
+      { key: 'customer', subKey: 'payment', label: '客户付款记录', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '2', y: '5', width: '20', height: '14', rx: '2', ry: '2' }), h('line', { x1: '2', y1: '10', x2: '22', y2: '10' })) }
     ]
   },
   {
