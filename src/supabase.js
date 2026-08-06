@@ -461,7 +461,7 @@ export function setLocalMode(mode) {
 
 const TABLE_SCHEMA = {
   customers: {
-    allowedFields: ['id', 'name', 'group_name', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at', 'updated_at']
+    allowedFields: ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at', 'updated_at']
   },
   sample_deliveries: {
     allowedFields: ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'remark']
@@ -555,6 +555,7 @@ const FIELD_MAPPING = {
     createdAt: 'created_at'
   },
   customers: {
+    group: 'group',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },

@@ -423,21 +423,25 @@ function migrateSampleDeliveries(data) {
   })
   
   if (data.productModels && Array.isArray(data.productModels)) {
-    // 生成短编号的计数器，用于为缺失 id 或长编号的机型自动补/改号
+    // 生成短编号的计数器，用于为缺失 id 或非标准编号的机型自动补/改号
     let pmIdCounter = 0
     const existingPmIds = new Set()
-    // 先收集已是短编号的 id
+    // 先收集已是标准短编号的 id (PM-XXX 格式)
     data.productModels.forEach(m => {
-      if (m.id && m.id.startsWith('PM-') && m.id.length <= 8) {
+      if (m.id && /^PM-\d{3}$/.test(m.id)) {
         existingPmIds.add(m.id)
       }
     })
-    while (existingPmIds.has(`PM-${String(pmIdCounter + 1).padStart(3, '0')}`)) pmIdCounter++
+    // 找到现有最大编号
+    existingPmIds.forEach(id => {
+      const match = id.match(/^PM-(\d{3})$/)
+      if (match) pmIdCounter = Math.max(pmIdCounter, parseInt(match[1]))
+    })
     
     data.productModels = data.productModels.map(m => {
       const fixed = { ...m }
-      // 核心修复：为缺失 id 或长编号(>30字符)的记录自动换短编号
-      const needNewId = !fixed.id || fixed.id.length > 15
+      // 核心修复：为缺失 id、过长、或非 PM-XXX 格式的记录自动换短编号
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^PM-\d{3}$/.test(fixed.id)
       if (needNewId) {
         pmIdCounter++
         fixed.id = `PM-${String(pmIdCounter).padStart(3, '0')}`
@@ -465,17 +469,18 @@ function migrateSampleDeliveries(data) {
   }
   
   if (data.customers && Array.isArray(data.customers)) {
-    // 为缺失 id 或长编号的客户自动补/改 id
+    // 为缺失 id 或非标准编号的客户自动补/改 id
     const validCustomerIds = new Set()
     data.customers.forEach(c => {
-      if (c.id && c.id.startsWith('CUST-') && c.id.length <= 10) {
+      if (c.id && /^CUST-\d{4}$/.test(c.id)) {
         validCustomerIds.add(c.id)
       }
     })
     let customerIdCounter = validCustomerIds.size
     data.customers = data.customers.map((c, idx) => {
       let id = c.id
-      const needNewId = !id || id.length > 15
+      // 需要新ID的情况: 无id、过长、或不是 CUST-XXXX 格式
+      const needNewId = !id || id.length > 15 || !/^CUST-\d{4}$/.test(id)
       if (needNewId) {
         customerIdCounter++
         id = `CUST-${String(customerIdCounter).padStart(4, '0')}`
@@ -499,12 +504,16 @@ function migrateSampleDeliveries(data) {
   if (data.salesOrders && Array.isArray(data.salesOrders)) {
     const validSoIds = new Set()
     data.salesOrders.forEach(s => {
-      if (s.id && s.id.startsWith('SO-') && s.id.length <= 10) validSoIds.add(s.id)
+      if (s.id && /^SO-\d{5}$/.test(s.id)) validSoIds.add(s.id)
     })
-    let soIdCounter = validSoIds.size
+    let soIdCounter = 0
+    validSoIds.forEach(id => {
+      const match = id.match(/^SO-(\d{5})$/)
+      if (match) soIdCounter = Math.max(soIdCounter, parseInt(match[1]))
+    })
     data.salesOrders = data.salesOrders.map(s => {
       const fixed = { ...s }
-      const needNewId = !fixed.id || fixed.id.length > 15
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^SO-\d{5}$/.test(fixed.id)
       if (needNewId) {
         soIdCounter++
         fixed.id = `SO-${String(soIdCounter).padStart(5, '0')}`
@@ -523,12 +532,16 @@ function migrateSampleDeliveries(data) {
   if (data.dailyTodos && Array.isArray(data.dailyTodos)) {
     const validTodoIds = new Set()
     data.dailyTodos.forEach(t => {
-      if (t.id && t.id.startsWith('TODO-') && t.id.length <= 10) validTodoIds.add(t.id)
+      if (t.id && /^TODO-\d{5}$/.test(t.id)) validTodoIds.add(t.id)
     })
-    let todoIdCounter = validTodoIds.size
+    let todoIdCounter = 0
+    validTodoIds.forEach(id => {
+      const match = id.match(/^TODO-(\d{5})$/)
+      if (match) todoIdCounter = Math.max(todoIdCounter, parseInt(match[1]))
+    })
     data.dailyTodos = data.dailyTodos.map(t => {
       const fixed = { ...t }
-      const needNewId = !fixed.id || fixed.id.length > 15
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^TODO-\d{5}$/.test(fixed.id)
       if (needNewId) {
         todoIdCounter++
         fixed.id = `TODO-${String(todoIdCounter).padStart(5, '0')}`
@@ -547,12 +560,16 @@ function migrateSampleDeliveries(data) {
   if (data.suppliers && Array.isArray(data.suppliers)) {
     const validSupIds = new Set()
     data.suppliers.forEach(s => {
-      if (s.id && s.id.startsWith('SUP-') && s.id.length <= 10) validSupIds.add(s.id)
+      if (s.id && /^SUP-\d{4}$/.test(s.id)) validSupIds.add(s.id)
     })
-    let supIdCounter = validSupIds.size
+    let supIdCounter = 0
+    validSupIds.forEach(id => {
+      const match = id.match(/^SUP-(\d{4})$/)
+      if (match) supIdCounter = Math.max(supIdCounter, parseInt(match[1]))
+    })
     data.suppliers = data.suppliers.map(s => {
       const fixed = { ...s }
-      const needNewId = !fixed.id || fixed.id.length > 15
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^SUP-\d{4}$/.test(fixed.id)
       if (needNewId) {
         supIdCounter++
         fixed.id = `SUP-${String(supIdCounter).padStart(4, '0')}`
@@ -571,12 +588,16 @@ function migrateSampleDeliveries(data) {
   if (data.activateExportConfigs && Array.isArray(data.activateExportConfigs)) {
     const validAecIds = new Set()
     data.activateExportConfigs.forEach(a => {
-      if (a.id && a.id.startsWith('AEC-') && a.id.length <= 10) validAecIds.add(a.id)
+      if (a.id && /^AEC-\d{3}$/.test(a.id)) validAecIds.add(a.id)
     })
-    let aecIdCounter = validAecIds.size
+    let aecIdCounter = 0
+    validAecIds.forEach(id => {
+      const match = id.match(/^AEC-(\d{3})$/)
+      if (match) aecIdCounter = Math.max(aecIdCounter, parseInt(match[1]))
+    })
     data.activateExportConfigs = data.activateExportConfigs.map(a => {
       const fixed = { ...a }
-      const needNewId = !fixed.id || fixed.id.length > 15
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^AEC-\d{3}$/.test(fixed.id)
       if (needNewId) {
         aecIdCounter++
         fixed.id = `AEC-${String(aecIdCounter).padStart(3, '0')}`
@@ -595,12 +616,16 @@ function migrateSampleDeliveries(data) {
   if (data.certMatrixCells && Array.isArray(data.certMatrixCells)) {
     const validCmcIds = new Set()
     data.certMatrixCells.forEach(c => {
-      if (c.id && c.id.startsWith('CMC-') && c.id.length <= 10) validCmcIds.add(c.id)
+      if (c.id && /^CMC-\d{3}$/.test(c.id)) validCmcIds.add(c.id)
     })
-    let cmcIdCounter = validCmcIds.size
+    let cmcIdCounter = 0
+    validCmcIds.forEach(id => {
+      const match = id.match(/^CMC-(\d{3})$/)
+      if (match) cmcIdCounter = Math.max(cmcIdCounter, parseInt(match[1]))
+    })
     data.certMatrixCells = data.certMatrixCells.map(c => {
       const fixed = { ...c }
-      const needNewId = !fixed.id || fixed.id.length > 15
+      const needNewId = !fixed.id || fixed.id.length > 15 || !/^CMC-\d{3}$/.test(fixed.id)
       if (needNewId) {
         cmcIdCounter++
         fixed.id = `CMC-${String(cmcIdCounter).padStart(3, '0')}`
