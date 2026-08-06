@@ -470,7 +470,7 @@ const TABLE_SCHEMA = {
     allowedFields: ['id', 'customer_name', 'model', 'follow_content', 'next_follow_date', 'last_follow_date', 'follow_type', 'remark', 'created_at', 'updated_at']
   },
   product_models: {
-    allowedFields: ['id', 'model_name', 'chip_scheme', 'screen_param', 'cert_list', 'supplier_name', 'created_at', 'updated_at']
+    allowedFields: ['id', 'name', 'model_name', 'chip', 'chip_scheme', 'screen', 'screen_param', 'certifications', 'cert_list', 'supplier_id', 'supplier_name', 'render_image_path', 'created_at', 'updated_at']
   },
   product_certs: {
     allowedFields: ['id', 'model_id', 'model_name', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'attachments', 'created_at', 'updated_at']
@@ -485,7 +485,10 @@ const TABLE_SCHEMA = {
     allowedFields: ['id', 'customer_name', 'model', 'invoice_no', 'total_amount', 'paid_amount', 'unpaid_amount', 'currency', 'remark', 'created_at', 'updated_at']
   },
   sales_orders: {
-    allowedFields: ['id', 'order_no', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'bulk_freight', 'freight_currency', 'order_type', 'payment_status', 'currency', 'created_at', 'updated_at']
+    allowedFields: ['id', 'order_no', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'order_type', 'currency', 'created_at', 'updated_at']
+  },
+  logistics_bills: {
+    allowedFields: ['id', 'tracking_no', 'customer_id', 'country', 'freight_forwarder', 'freight_amount', 'payment_status', 'write_off_date', 'created_at', 'updated_at']
   },
   customer_groups: {
     allowedFields: ['id', 'group_name', 'description', 'color', 'created_at']
@@ -504,6 +507,33 @@ const TABLE_SCHEMA = {
   },
   cert_matrix_statuses: {
     allowedFields: ['id', 'key', 'name', 'color', 'bg']
+  },
+  suppliers: {
+    allowedFields: ['id', 'name', 'contact', 'phone', 'email', 'address', 'remark', 'created_at']
+  },
+  customer_follow_ups: {
+    allowedFields: ['id', 'customer_id', 'content', 'followup_date', 'result', 'contact_method', 'po_number', 'next_followup', 'operator', 'remark', 'created_at']
+  },
+  customer_payments: {
+    allowedFields: ['id', 'customer_id', 'amount', 'payment_date', 'method', 'remark', 'created_at']
+  },
+  projects: {
+    allowedFields: ['id', 'name', 'description', 'color', 'status', 'created_at']
+  },
+  stages: {
+    allowedFields: ['id', 'project_id', 'name', 'order', 'created_at']
+  },
+  tasks: {
+    allowedFields: ['id', 'project_id', 'stage_id', 'title', 'description', 'status', 'priority', 'assignee', 'due_date', 'created_at']
+  },
+  daily_todos: {
+    allowedFields: ['id', 'todo_date', 'date', 'title', 'content', 'completed', 'priority', 'created_at']
+  },
+  daily_reminders: {
+    allowedFields: ['id', 'time', 'content', 'enabled', 'created_at']
+  },
+  todo_remind_logs: {
+    allowedFields: ['id', 'remind_date', 'todo_id', 'reminded_at']
   }
 }
 
@@ -573,6 +603,17 @@ const FIELD_MAPPING = {
     totalAmount: 'total_amount',
     paidAmount: 'paid_amount',
     unpaidAmount: 'unpaid_amount',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  logistics_bills: {
+    trackingNo: 'tracking_no',
+    customerId: 'customer_id',
+    country: 'country',
+    freightForwarder: 'freight_forwarder',
+    freightAmount: 'freight_amount',
+    paymentStatus: 'payment_status',
+    writeOffDate: 'write_off_date',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
