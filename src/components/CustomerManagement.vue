@@ -15,6 +15,10 @@
               批量分配分组
               <span v-if="selectedCustomerIds.length > 0">（{{ selectedCustomerIds.length }}）</span>
             </el-button>
+            <el-button type="danger" :disabled="selectedCustomerIds.length === 0" @click="batchDeleteCustomers">
+              批量删除
+              <span v-if="selectedCustomerIds.length > 0">（{{ selectedCustomerIds.length }}）</span>
+            </el-button>
           </div>
           <el-table :data="filteredCustomers" border stripe @selection-change="handleCustomerSelectionChange">
             <el-table-column type="selection" width="50" />
@@ -1594,6 +1598,35 @@ function confirmFollowupExport() {
 
 function handleCustomerSelectionChange(selection) {
   selectedCustomerIds.value = selection.map(c => c.id)
+}
+
+async function batchDeleteCustomers() {
+  if (selectedCustomerIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要删除的客户')
+    return
+  }
+  
+  ElMessageBox.confirm(
+    `确定要删除选中的 ${selectedCustomerIds.value.length} 位客户吗？此操作不可恢复！`,
+    '确认批量删除',
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'error'
+    }
+  ).then(async () => {
+    let deletedCount = 0
+    for (const id of selectedCustomerIds.value) {
+      try {
+        await deleteCustomer(id)
+        deletedCount++
+      } catch (e) {
+        console.error(`删除客户 ${id} 失败:`, e)
+      }
+    }
+    selectedCustomerIds.value = []
+    ElMessage.success(`成功删除 ${deletedCount} 位客户`)
+  }).catch(() => {})
 }
 
 function handleFollowupSelectionChange(selection) {
