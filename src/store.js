@@ -379,9 +379,8 @@ function loadUserData(userId) {
       console.log(`[数据加载] activateExportConfigs 数量: ${parsed.activateExportConfigs?.length || 0}`)
       
       if (parsed.dataVersion !== DATA_VERSION) {
-        console.log(`[数据加载] 版本不匹配，清除旧数据`)
-        localStorage.removeItem(storageKey)
-        return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
+        console.log(`[数据加载] 版本不匹配 (${parsed.dataVersion} → ${DATA_VERSION})，执行迁移`)
+        // 不清除数据，而是保留旧数据并执行迁移
       }
       
       const result = { ...defaultData, ...parsed, user: parsed.user || { ...defaultUser, name: userId } }
