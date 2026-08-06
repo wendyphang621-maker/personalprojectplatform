@@ -506,7 +506,7 @@ const TABLE_SCHEMA = {
     allowedFields: ['id', 'name', 'files', 'created_at']
   },
   cert_matrix_statuses: {
-    allowedFields: ['id', 'key', 'name', 'color', 'bg']
+    allowedFields: ['id', 'key', 'key_value', 'name', 'color', 'bg']
   },
   suppliers: {
     allowedFields: ['id', 'name', 'contact', 'phone', 'email', 'address', 'remark', 'created_at']
@@ -643,7 +643,9 @@ const FIELD_MAPPING = {
   cert_matrix_templates: {
     createdAt: 'created_at'
   },
-  cert_matrix_statuses: {}
+  cert_matrix_statuses: {
+    key: 'key'
+  }
 }
 
 function camelToSnake(str) {
