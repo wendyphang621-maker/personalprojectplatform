@@ -17,7 +17,7 @@ const defaultUser = {
 const defaultData = {
   customerGroups: ['中东沙特组', '阿联酋UAE组', '阿曼/巴林/科威特组', '卡塔尔组', '黎巴嫩组', '欧洲客户组', '东南亚客户组'],
   logisticsCompanies: ['顺丰', 'DHL', 'FedEx', 'UPS', 'EMS'],
-  localMode: true,
+  localMode: false,
   currentPage: 'workbench',
   currentSubPage: '',
   currentProjectId: null,

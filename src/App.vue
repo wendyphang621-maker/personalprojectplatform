@@ -753,7 +753,21 @@ onMounted(async () => {
   
   if (isLoggedIn.value) {
     restoreSession()
-    await syncAllFromSupabase()
+    // 恢复会话后也检测云端权限，自动切换模式
+    setTimeout(async () => {
+      try {
+        const permCheck = await checkSupabasePermissions()
+        if (permCheck.ok && store.localMode) {
+          toggleLocalMode(false)
+          setLocalMode(false)
+          localStorage.removeItem('supabase_rls_failed')
+          await syncAllFromSupabase(false)
+          ElMessage.success('✅ 已自动切换为云端模式')
+        }
+      } catch (e) {
+        console.warn('[启动] 权限检测失败：', e)
+      }
+    }, 500)
   }
   
   initFromHash()
