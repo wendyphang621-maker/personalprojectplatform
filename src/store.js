@@ -651,7 +651,7 @@ function saveUserData(userId, data) {
   }
 }
 
-function saveToLocalStorage() {
+export function saveToLocalStorage() {
   if (!currentUserId) {
     console.warn('[数据保存] currentUserId 为空，跳过保存')
     return
