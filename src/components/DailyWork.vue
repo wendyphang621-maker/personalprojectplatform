@@ -295,6 +295,46 @@
             </el-table>
           </div>
 
+          <div v-else-if="tab.type === 'reminder'" class="reminder-container">
+            <div class="search-bar" style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+              <el-button type="primary" @click="handleAddReminder">新增待办</el-button>
+              <el-button @click="exportReminders">导出Excel</el-button>
+              <span v-if="reminderPermission !== 'granted'" style="color: #e6a23c; font-size: 13px;">
+                桌面通知未开启，
+                <el-button link type="primary" @click="requestNotifyPermission">点击开启</el-button>
+              </span>
+              <span v-else style="color: #67c23a; font-size: 13px;">✓ 桌面通知已开启</span>
+            </div>
+            <el-table :data="filteredDailyReminders" border stripe>
+              <el-table-column prop="title" label="任务标题" min-width="200" show-overflow-tooltip />
+              <el-table-column label="关联业务" width="120">
+                <template #default="{ row }">{{ getBusinessLabel(row.businessType) }}</template>
+              </el-table-column>
+              <el-table-column label="关联激活配置" width="180">
+                <template #default="{ row }">{{ getActivateConfigLabel(row.activateConfigId) }}</template>
+              </el-table-column>
+              <el-table-column prop="remindTime" label="提醒时间" width="90" />
+              <el-table-column label="重复规则" width="90">
+                <template #default="{ row }">{{ getRepeatLabel(row.repeatRule) }}</template>
+              </el-table-column>
+              <el-table-column label="任务状态" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'completed' ? 'success' : 'warning'" size="small">
+                    {{ row.status === 'completed' ? '已完成' : '待办' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
+              <el-table-column label="操作" width="220" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" @click="handleEditReminder(row)">编辑</el-button>
+                  <el-button size="small" type="success" :disabled="row.status === 'completed'" @click="markReminderDone(row)">完成</el-button>
+                  <el-button size="small" type="danger" @click="handleDeleteReminder(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
           <div v-else class="custom-tab-content">
             <p>自定义标签内容</p>
           </div>
@@ -676,7 +716,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { store, addDailyTodoItem, updateDailyTodoItem, deleteDailyTodoItem, addTag as addTagStore, updateTag, deleteTag, getTags, addTodoCategory, updateTodoCategory, deleteTodoCategory, getTodoCategories } from '../store.js'
+import { store, addDailyTodoItem, updateDailyTodoItem, deleteDailyTodoItem, addTag as addTagStore, updateTag, deleteTag, getTags, addTodoCategory, updateTodoCategory, deleteTodoCategory, getTodoCategories, generateId } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
 import { sanitizePathSegment } from '../utils/common.js'
@@ -770,7 +810,8 @@ const defaultTabs = [
   { name: 'cert', label: '证书进度跟进', closable: false, type: 'cert' },
   { name: 'report', label: '周报自动生成', closable: false, type: 'report' },
   { name: 'map', label: '客户线索采集', closable: false, type: 'map' },
-  { name: 'letter', label: '开发信存档库', closable: false, type: 'letter' }
+  { name: 'letter', label: '开发信存档库', closable: false, type: 'letter' },
+  { name: 'reminder', label: '每日待办清单', closable: false, type: 'reminder' }
 ]
 
 const customTabs = ref([])

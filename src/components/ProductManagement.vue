@@ -12,7 +12,7 @@
           </div>
           <el-table :data="filteredModels" border stripe @selection-change="val => modelSelection = val">
             <el-table-column type="selection" width="45" />
-            <el-table-column prop="id" label="ID" width="60" />
+            <el-table-column prop="id" label="机型编号" width="110" />
             <el-table-column prop="name" label="机型名称" />
             <el-table-column prop="chip" label="芯片方案" />
             <el-table-column prop="screen" label="屏幕参数" />
@@ -34,6 +34,8 @@
       
       <el-tab-pane label="合规认证档案" name="cert">
         <div class="tab-content">
+          <el-tabs v-model="activeCertSubTab" type="card">
+            <el-tab-pane label="单条认证档案" name="single">
           <div class="search-bar">
             <el-select v-model="filterCertType" placeholder="认证类型" clearable style="width: 120px">
               <el-option label="CE" value="CE" />
@@ -82,13 +84,22 @@
               </template>
             </el-table-column>
             <el-table-column prop="organization" label="对接机构" />
-            <el-table-column label="操作" width="150">
+            <el-table-column label="操作" width="220">
               <template #default="{ row }">
                 <el-button size="small" @click="handleEditCert(row)">编辑</el-button>
+                <el-button size="small" type="warning" @click="jumpToMatrix(row)">查看矩阵</el-button>
                 <el-button size="small" type="danger" @click="handleDeleteCert(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="文件进度矩阵" name="matrix">
+              <CertMatrixManager :initial-cert-type="matrixInitialCertType" @filter-consumed="matrixInitialCertType = ''" @jump-to-overview="jumpToOverviewTab" />
+            </el-tab-pane>
+            <el-tab-pane label="机型文件总览" name="overview">
+              <ModelFileOverview :highlight-model-id="overviewHighlightModelId" @jump-to-matrix="jumpBackToMatrix" />
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </el-tab-pane>
       
@@ -379,10 +390,17 @@
           </el-table>
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="激活数据导出配置" name="activate">
+        <ActivateConfigManager />
+      </el-tab-pane>
     </el-tabs>
     
     <el-dialog v-model="showModelDialog" :title="isEditingModel ? '编辑机型' : '新增机型'" width="500px">
       <el-form :model="modelForm" label-width="100px">
+        <el-form-item label="机型编号">
+          <el-input v-model="modelForm.id" :placeholder="isEditingModel ? '可修改编号，如 PM-001' : '留空自动生成，如 PM-001'" />
+        </el-form-item>
         <el-form-item label="机型名称">
           <el-input v-model="modelForm.name" />
         </el-form-item>
@@ -585,6 +603,98 @@
       style="display: none"
       @change="handleSupplierImport"
     />
+    <input
+      ref="activateImportInput"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleActivateImport"
+    />
+
+    <el-dialog v-model="showActivateDialog" :title="isEditingActivate ? '编辑激活导出配置' : '新增激活导出配置'" width="640px">
+      <el-form :model="activateForm" label-width="140px">
+        <el-form-item label="客户名称">
+          <el-select v-model="activateForm.customer" placeholder="必填，可选择或输入" filterable allow-create default-first-option style="width: 100%">
+            <el-option v-for="opt in customerOptions" :key="opt" :label="opt" :value="opt" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="更新频率">
+          <el-input v-model="activateForm.updateFrequency" placeholder="如：每天/每周二/周一和周四/每两天" />
+        </el-form-item>
+        <el-form-item label="接收激活数据邮箱">
+          <el-input v-model="activateForm.receiveEmail" placeholder="如：user@example.com" />
+        </el-form-item>
+        <el-form-item label="型号">
+          <el-select v-model="activateForm.model" placeholder="必填，可选择或输入" filterable allow-create default-first-option style="width: 100%">
+            <el-option v-for="opt in modelOptions" :key="opt" :label="opt" :value="opt" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="国家">
+          <el-input v-model="activateForm.country" placeholder="必填" />
+        </el-form-item>
+        <el-form-item label="软件版本号">
+          <el-input v-model="activateForm.softwareVersion" type="textarea" :rows="3" placeholder="支持多行换行" />
+        </el-form-item>
+        <el-form-item label="是否需要带IMEI">
+          <el-switch v-model="activateForm.needImei" />
+        </el-form-item>
+        <el-form-item label="是否需要筛选">
+          <el-switch v-model="activateForm.needFilter" />
+        </el-form-item>
+        <el-form-item label="导出数据表名">
+          <el-input v-model="activateForm.exportTableName" />
+        </el-form-item>
+        <el-form-item label="FOTA搜索数据源">
+          <el-input v-model="activateForm.fotaSource" />
+        </el-form-item>
+        <el-form-item label="启用状态">
+          <el-switch v-model="activateForm.enabled" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showActivateDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveActivateConfig">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showActivateImportResult" title="导入结果" width="720px">
+      <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+        <el-card shadow="hover" style="flex: 1;">
+          <div style="text-align: center;">
+            <div style="font-size: 24px; color: #67c23a; font-weight: bold;">{{ activateImportResult.success }}</div>
+            <div style="color: #909399;">成功导入</div>
+          </div>
+        </el-card>
+        <el-card shadow="hover" style="flex: 1;">
+          <div style="text-align: center;">
+            <div style="font-size: 24px; color: #e6a23c; font-weight: bold;">{{ activateImportResult.conflict }}</div>
+            <div style="color: #909399;">重复冲突</div>
+          </div>
+        </el-card>
+        <el-card shadow="hover" style="flex: 1;">
+          <div style="text-align: center;">
+            <div style="font-size: 24px; color: #f56c6c; font-weight: bold;">{{ activateImportResult.failed }}</div>
+            <div style="color: #909399;">失败条数</div>
+          </div>
+        </el-card>
+      </div>
+      <div v-if="activateImportResult.failedRecords.length > 0">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span style="font-weight: bold;">失败明细（{{ activateImportResult.failedRecords.length }} 条）</span>
+          <el-button size="small" @click="exportActivateFailedRecords">导出失败数据</el-button>
+        </div>
+        <el-table :data="activateImportResult.failedRecords" border max-height="300">
+          <el-table-column prop="rowNo" label="行号" width="70" />
+          <el-table-column prop="customer" label="客户" />
+          <el-table-column prop="model" label="型号" />
+          <el-table-column prop="country" label="国家" />
+          <el-table-column prop="error" label="错误原因" show-overflow-tooltip />
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="showActivateImportResult = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -592,7 +702,10 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, createVNode } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import FileUploader from './FileUploader.vue'
-import { store, addProductModel, updateProductModel, deleteProductModel, addCertRecord, updateCertRecord, deleteCertRecord, addSupplier, updateSupplier, deleteSupplier, syncAllFromSupabase } from '../store.js'
+import ActivateConfigManager from './ActivateConfigManager.vue'
+import CertMatrixManager from './CertMatrixManager.vue'
+import ModelFileOverview from './ModelFileOverview.vue'
+import { store, addProductModel, updateProductModel, updateProductModelId, deleteProductModel, addCertRecord, updateCertRecord, deleteCertRecord, addSupplier, updateSupplier, deleteSupplier, syncAllFromSupabase, addActivateExportConfig, updateActivateExportConfig, deleteActivateExportConfig, addDailyReminder, canBatchDelete, canEditActivateConfig } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 import { getAllCachedMaterials, addMaterialsToCache, deleteMaterialFromCache, batchDeleteMaterialsFromCache, clearAllCache, getCacheRootFolder, getCacheCount, validateAndCleanCache } from '../utils/materialCache.js'
@@ -605,6 +718,34 @@ const props = defineProps({
 })
 
 const activeTab = ref(props.currentSubPage || 'model')
+const activeCertSubTab = ref('single')
+const matrixInitialCertType = ref('')
+const overviewHighlightModelId = ref('')
+
+// 跳转到矩阵视图并筛选指定认证类型
+function jumpToMatrix(certRow) {
+  matrixInitialCertType.value = certRow.certType || ''
+  activeCertSubTab.value = 'matrix'
+  if (certRow.certType) {
+    ElMessage.info(`已切换到矩阵视图，筛选认证类型：${certRow.certType}`)
+  }
+}
+
+// 跳转到机型文件总览 Tab
+function jumpToOverviewTab(modelId = '') {
+  if (modelId) {
+    overviewHighlightModelId.value = modelId
+  }
+  activeCertSubTab.value = 'overview'
+}
+
+// 从总览跳回矩阵
+function jumpBackToMatrix(modelId = '') {
+  activeCertSubTab.value = 'matrix'
+  if (modelId) {
+    ElMessage.info(`已切换到矩阵视图，机型：${modelId}`)
+  }
+}
 
 watch(() => props.currentSubPage, (newVal) => {
   if (newVal && activeTab.value !== newVal) {
@@ -740,6 +881,263 @@ const supplierFieldMapping = [
   { excelHeader: '供货机型', dataField: 'models' },
   { excelHeader: '资质文件', dataField: 'qualification' }
 ]
+
+// === 激活数据导出配置 ===
+const activateImportInput = ref(null)
+const showActivateDialog = ref(false)
+const showActivateImportResult = ref(false)
+const isEditingActivate = ref(false)
+const selectedActivateIds = ref([])
+const canBatchDel = computed(() => canBatchDelete())
+const canEditActivate = computed(() => canEditActivateConfig())
+
+const activateFilter = reactive({ customer: '', model: '', country: '', enabled: '' })
+
+const activateForm = reactive({
+  id: '', customer: '', updateFrequency: '', receiveEmail: '', model: '',
+  country: '', softwareVersion: '', needImei: false, needFilter: false,
+  exportTableName: '', fotaSource: '', enabled: true
+})
+
+const activateImportResult = reactive({ success: 0, conflict: 0, failed: 0, failedRecords: [] })
+
+const activateFieldMapping = [
+  { excelHeader: '客户', dataField: 'customer' },
+  { excelHeader: '更新频率', dataField: 'updateFrequency' },
+  { excelHeader: '接受激活数据邮箱', dataField: 'receiveEmail' },
+  { excelHeader: '型号', dataField: 'model' },
+  { excelHeader: '国家', dataField: 'country' },
+  { excelHeader: '软件版本号', dataField: 'softwareVersion' },
+  { excelHeader: '是否需要带IMEI', dataField: 'needImei' },
+  { excelHeader: '是否需要筛选', dataField: 'needFilter' },
+  { excelHeader: '导出数据表名', dataField: 'exportTableName' },
+  { excelHeader: 'FOTA搜索数据源', dataField: 'fotaSource' },
+  { excelHeader: 'FOTA搜索数据', dataField: 'fotaSource' },
+  { excelHeader: '备注', dataField: 'remark' }
+]
+
+const filteredActivateConfigs = computed(() => {
+  return store.activateExportConfigs.filter(c => {
+    if (activateFilter.customer && !c.customer.includes(activateFilter.customer)) return false
+    if (activateFilter.model && !c.model.includes(activateFilter.model)) return false
+    if (activateFilter.country && !c.country.includes(activateFilter.country)) return false
+    if (activateFilter.enabled !== '' && activateFilter.enabled !== null && c.enabled !== activateFilter.enabled) return false
+    return true
+  })
+})
+
+const customerOptions = computed(() => {
+  const set = new Set(store.activateExportConfigs.map(c => c.customer).filter(Boolean))
+  return [...set].sort()
+})
+
+const modelOptions = computed(() => {
+  const set = new Set(store.activateExportConfigs.map(c => c.model).filter(Boolean))
+  return [...set].sort()
+})
+
+function handleAddActivateConfig() {
+  isEditingActivate.value = false
+  Object.assign(activateForm, {
+    id: '', customer: '', updateFrequency: '', receiveEmail: '', model: '',
+    country: '', softwareVersion: '', needImei: false, needFilter: false,
+    exportTableName: '', fotaSource: '', enabled: true
+  })
+  showActivateDialog.value = true
+}
+
+function handleEditActivateConfig(row) {
+  isEditingActivate.value = true
+  Object.assign(activateForm, row)
+  showActivateDialog.value = true
+}
+
+function saveActivateConfig() {
+  if (!activateForm.customer.trim() || !activateForm.model.trim() || !activateForm.country.trim()) {
+    ElMessage.warning('客户、型号、国家为必填项')
+    return
+  }
+  if (activateForm.receiveEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(activateForm.receiveEmail)) {
+    ElMessage.warning('邮箱格式错误')
+    return
+  }
+  if (isEditingActivate.value) {
+    updateActivateExportConfig(activateForm.id, { ...activateForm })
+    ElMessage.success('更新成功')
+  } else {
+    addActivateExportConfig({ ...activateForm })
+    ElMessage.success('新增成功')
+  }
+  showActivateDialog.value = false
+}
+
+function toggleActivateEnabled(row) {
+  updateActivateExportConfig(row.id, { enabled: !row.enabled })
+  ElMessage.success(row.enabled ? '已停用' : '已启用')
+}
+
+function handleDeleteActivateConfig(row) {
+  ElMessageBox.confirm(`确认删除 ${row.customer}-${row.model} 配置？`, '提示', { type: 'warning' })
+    .then(() => {
+      deleteActivateExportConfig(row.id)
+      ElMessage.success('删除成功')
+    })
+    .catch(() => {})
+}
+
+function batchDeleteActivateConfigs() {
+  ElMessageBox.confirm(`确认批量删除 ${selectedActivateIds.value.length} 条配置？此操作不可恢复。`, '确认批量删除', { type: 'warning' })
+    .then(() => {
+      selectedActivateIds.value.forEach(id => deleteActivateExportConfig(id))
+      ElMessage.success(`已删除 ${selectedActivateIds.value.length} 条配置`)
+      selectedActivateIds.value = []
+    })
+    .catch(() => {})
+}
+
+function batchDisableActivateConfigs() {
+  const count = selectedActivateIds.value.length
+  ElMessageBox.confirm(`确认批量停用 ${count} 条配置？停用后仍可单独启用。`, '确认批量停用', { type: 'warning' })
+    .then(() => {
+      selectedActivateIds.value.forEach(id => updateActivateExportConfig(id, { enabled: false }))
+      ElMessage.success(`已停用 ${count} 条配置`)
+      selectedActivateIds.value = []
+    })
+    .catch(() => {})
+}
+
+function batchEnableActivateConfigs() {
+  const count = selectedActivateIds.value.length
+  ElMessageBox.confirm(`确认批量启用 ${count} 条配置？`, '确认批量启用', { type: 'success' })
+    .then(() => {
+      selectedActivateIds.value.forEach(id => updateActivateExportConfig(id, { enabled: true }))
+      ElMessage.success(`已启用 ${count} 条配置`)
+      selectedActivateIds.value = []
+    })
+    .catch(() => {})
+}
+
+function refreshActivateList() {
+  ElMessage.success('列表已刷新')
+}
+
+function addAsDailyReminder(row) {
+  const title = `激活导出-${row.customer}-${row.model}-${row.country}`
+  addDailyReminder({
+    title,
+    businessType: 'activate_export',
+    activateConfigId: row.id,
+    remindTime: '09:00',
+    repeatRule: row.updateFrequency === '每日' ? 'daily' : 'once',
+    remark: `来源：激活配置 ${row.id}`
+  })
+  ElMessage.success('已添加为每日待办：' + title)
+}
+
+function exportActivateConfigs() {
+  const headers = ['客户', '更新频率', '接收激活数据邮箱', '型号', '国家', '软件版本号', '是否需要带IMEI', '是否需要筛选', '导出数据表名', 'FOTA搜索数据源', '启用状态']
+  const data = filteredActivateConfigs.value.map(c => [
+    c.customer, c.updateFrequency, c.receiveEmail, c.model, c.country,
+    c.softwareVersion, c.needImei ? '是' : '否', c.needFilter ? '是' : '否',
+    c.exportTableName, c.fotaSource, c.enabled ? '启用' : '停用'
+  ])
+  exportToExcel('激活数据导出配置', headers, data)
+}
+
+function exportActivateFailedRecords() {
+  const headers = ['行号', '客户', '型号', '国家', '错误原因']
+  const data = activateImportResult.failedRecords.map(r => [r.rowNo, r.customer, r.model, r.country, r.error])
+  exportToExcel('导入失败明细', headers, data)
+}
+
+function triggerActivateImport() {
+  activateImportInput.value?.click()
+}
+
+async function handleActivateImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  Object.assign(activateImportResult, { success: 0, conflict: 0, failed: 0, failedRecords: [] })
+
+  // 通用的合并单元格填充：每个字段的上一个非空值
+  const lastValues = {}
+  const seenCombos = new Set()
+  const existingCombos = new Set(
+    store.activateExportConfigs.map(c => `${c.customer}|${c.model}|${c.country}`)
+  )
+  const successRecords = []
+
+  try {
+    const result = await importFromExcel(file, {
+      fieldMapping: activateFieldMapping,
+      headerRow: 2,
+      startRow: 3,
+      transformRow: (rowData) => {
+        // 通用合并单元格填充：遍历所有字段，空值用上一行非空值填充
+        for (const key in rowData) {
+          const val = (rowData[key] ?? '').toString().trim()
+          if (val) {
+            lastValues[key] = val
+          } else if (lastValues[key]) {
+            rowData[key] = lastValues[key]
+          }
+        }
+
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug('导入行数据:', { customer: rowData.customer, model: rowData.model, country: rowData.country, email: rowData.receiveEmail })
+        }
+
+        if (rowData.softwareVersion) {
+          rowData.softwareVersion = rowData.softwareVersion
+            .toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+        }
+
+        const toBool = v => ['是', 'true', 'TRUE', '1', 1, true, 'yes', 'Yes', 'YES'].includes(v)
+        rowData.needImei = toBool(rowData.needImei)
+        rowData.needFilter = toBool(rowData.needFilter)
+        return rowData
+      }
+    })
+
+    if (!result.success || !result.data || !Array.isArray(result.data)) {
+      ElMessage.error(result.message || '导入失败：未解析到有效数据，请检查表头是否在第1行')
+      return
+    }
+
+    result.data.forEach((item, idx) => {
+      const rowNo = idx + 2
+      const errors = []
+      if (!item.customer) errors.push('客户必填')
+      if (!item.model) errors.push('型号必填')
+      if (!item.country) errors.push('国家必填')
+      const email = (item.receiveEmail || '').toString().trim()
+      if (email && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
+        errors.push('邮箱格式错误')
+      }
+      const combo = `${item.customer}|${item.model}|${item.country}`
+      if (errors.length) {
+        activateImportResult.failed++
+        activateImportResult.failedRecords.push({
+          rowNo, customer: item.customer, model: item.model, country: item.country,
+          error: errors.join('; ')
+        })
+      } else if (seenCombos.has(combo) || existingCombos.has(combo)) {
+        activateImportResult.conflict++
+      } else {
+        seenCombos.add(combo)
+        successRecords.push(item)
+      }
+    })
+
+    successRecords.forEach(item => addActivateExportConfig(item))
+    activateImportResult.success = successRecords.length
+    showActivateImportResult.value = true
+  } catch (error) {
+    ElMessage.error(`导入失败: ${error.message}`)
+  } finally {
+    event.target.value = ''
+  }
+}
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.ico', '.tiff', '.tif', '.svg', '.heic', '.heif']
 const MAX_THUMBNAIL_WIDTH = 800
@@ -1920,6 +2318,7 @@ function handleEditModel(row) {
   isEditingModel.value = true
   Object.assign(modelForm, {
     ...row,
+    _originalId: row.id,
     certifications: Array.isArray(row.certifications) ? row.certifications : [],
     materials: Array.isArray(row.materials) ? row.materials : []
   })
@@ -1947,9 +2346,24 @@ function confirmModel() {
     alert('请填写机型名称')
     return
   }
+  if (modelForm.id && !/^[A-Za-z0-9_-]+$/.test(modelForm.id)) {
+    alert('机型编号仅支持字母、数字、- 和 _')
+    return
+  }
   if (isEditingModel.value) {
+    const oldId = modelForm._originalId || modelForm.id
+    const newId = modelForm.id
+    if (oldId !== newId) {
+      // ID 变更：更新所有引用
+      updateProductModelId(oldId, newId)
+    }
     updateProductModel(modelForm)
   } else {
+    // 新增时检查 ID 是否已存在
+    if (modelForm.id && store.productModels.some(m => m.id === modelForm.id)) {
+      alert('该机型编号已存在，请更换')
+      return
+    }
     addProductModel(modelForm)
   }
   showModelDialog.value = false

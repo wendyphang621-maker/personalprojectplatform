@@ -489,6 +489,21 @@ const TABLE_SCHEMA = {
   },
   customer_groups: {
     allowedFields: ['id', 'group_name', 'description', 'color', 'created_at']
+  },
+  activate_export_configs: {
+    allowedFields: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'created_at', 'updated_at']
+  },
+  cert_matrix_files: {
+    allowedFields: ['id', 'name', 'template', 'category', 'order', 'remark', 'is_deleted', 'update_time']
+  },
+  cert_matrix_cells: {
+    allowedFields: ['id', 'file_id', 'model_id', 'status', 'remark', 'cert_id', 'cert_type', 'is_deleted', 'update_time']
+  },
+  cert_matrix_templates: {
+    allowedFields: ['id', 'name', 'files', 'created_at']
+  },
+  cert_matrix_statuses: {
+    allowedFields: ['id', 'key', 'name', 'color', 'bg']
   }
 }
 
@@ -512,10 +527,12 @@ const FIELD_MAPPING = {
     lastFollowDate: 'last_follow_date'
   },
   product_models: {
-    chipScheme: 'chip_scheme',
-    screenParam: 'screen_param',
-    certList: 'cert_list',
-    supplierName: 'supplier_name',
+    id: 'id',
+    name: 'model_name',
+    chip: 'chip_scheme',
+    screen: 'screen_param',
+    certifications: 'cert_list',
+    supplierId: 'supplier_name',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
@@ -557,7 +574,34 @@ const FIELD_MAPPING = {
     unpaidAmount: 'unpaid_amount',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
-  }
+  },
+  activate_export_configs: {
+    updateFrequency: 'update_frequency',
+    receiveEmail: 'receive_email',
+    softwareVersion: 'software_version',
+    needImei: 'need_imei',
+    needFilter: 'need_filter',
+    exportTableName: 'export_table_name',
+    fotaSource: 'fota_source',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  cert_matrix_files: {
+    isDeleted: 'is_deleted',
+    updateTime: 'update_time'
+  },
+  cert_matrix_cells: {
+    fileId: 'file_id',
+    modelId: 'model_id',
+    certId: 'cert_id',
+    certType: 'cert_type',
+    isDeleted: 'is_deleted',
+    updateTime: 'update_time'
+  },
+  cert_matrix_templates: {
+    createdAt: 'created_at'
+  },
+  cert_matrix_statuses: {}
 }
 
 function camelToSnake(str) {
@@ -587,14 +631,22 @@ function convertDataForSupabase(data, tableName) {
   const schema = TABLE_SCHEMA[tableName]
   const allowedFields = schema ? schema.allowedFields : null
   
+  console.log(`[convertDataForSupabase] 表 ${tableName}, 原始数据:`, JSON.stringify(data))
+  console.log(`[convertDataForSupabase] 原始字段:`, Object.keys(data))
+  console.log(`[convertDataForSupabase] mapping:`, mapping)
+  console.log(`[convertDataForSupabase] allowedFields:`, allowedFields)
+  
   let converted = data
   if (mapping) {
     converted = {}
     for (const [key, value] of Object.entries(data)) {
       const newKey = convertFieldName(key, mapping, 'toSnake')
+      console.log(`[convertDataForSupabase] 字段 ${key} -> ${newKey}, 值:`, value)
       converted[newKey] = value
     }
   }
+  
+  console.log(`[convertDataForSupabase] 转换后字段:`, Object.keys(converted))
   
   if (!allowedFields) return converted
   
@@ -604,6 +656,7 @@ function convertDataForSupabase(data, tableName) {
     if (allowedFields.includes(key)) {
       filtered[key] = value
     } else {
+      console.log(`[convertDataForSupabase] 剥离字段: ${key} (不在白名单中)`)
       strippedCount++
     }
   }
@@ -612,6 +665,7 @@ function convertDataForSupabase(data, tableName) {
     console.log(`[字段过滤] 表 ${tableName} 已剥离 ${strippedCount} 个不在白名单中的字段`)
   }
   
+  console.log(`[convertDataForSupabase] 最终字段:`, Object.keys(filtered))
   return filtered
 }
 
@@ -641,46 +695,114 @@ export async function syncToSupabase(tableName, data) {
   }
   
   try {
-    let convertedData = convertDataForSupabase(data, tableName)
+    // ======= 兜底：同步前为缺失 id 的记录自动补短编号 =======
+    const safeData = { ...data }
+    if (!safeData.id || safeData.id.length > 30) {
+      // 只在没有 id 或 id 是长时间戳格式时才生成短编号
+      const idPrefixMap = {
+        product_models: 'PM',
+        customers: 'CUST',
+        sales_orders: 'SO',
+        daily_todos: 'TODO',
+        suppliers: 'SUP',
+        logistics_orders: 'LOG',
+        package_sample_follows: 'PKG',
+        customer_follow_ups: 'CFU',
+        customer_payments: 'CPAY',
+        projects: 'PRJ',
+        stages: 'STG',
+        tasks: 'TSK',
+        package_freight_records: 'PFR',
+        inventory: 'INV',
+        inventory_logs: 'ILOG',
+        price_history: 'PH',
+        customer_groups: 'CG',
+        cert_matrix_files: 'CMF',
+        cert_matrix_cells: 'CMC',
+        cert_matrix_templates: 'CMT',
+        cert_matrix_statuses: 'CMS',
+        product_certs: 'PC',
+        product_images: 'PI',
+        daily_reminders: 'DR',
+        todo_remind_logs: 'TRL',
+        sample_deliveries: 'SD',
+        activate_export_configs: 'AEC'
+      }
+      const prefix = idPrefixMap[tableName] || 'REC'
+      // 用短编号：查询现有最大编号 + 1
+      try {
+        const { data: existing } = await client.from(tableName).select('id').order('id', { ascending: false }).limit(1)
+        let nextNum = 1
+        if (existing && existing.length > 0 && existing[0].id) {
+          const match = existing[0].id.match(/-(\d+)$/)
+          if (match) nextNum = parseInt(match[1]) + 1
+        }
+        safeData.id = `${prefix}-${String(nextNum).padStart(3, '0')}`
+      } catch {
+        // 查询失败则用随机短编号兜底
+        safeData.id = `${prefix}-${String(Math.floor(Math.random() * 900) + 100)}`
+      }
+      console.log(`[syncToSupabase] 表 ${tableName} 生成短编号: ${safeData.id}`)
+    }
+    
+    let convertedData = convertDataForSupabase(safeData, tableName)
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    
-    const tablesWithTextId = ['sample_deliveries']
+
+    const tablesWithTextId = ['sample_deliveries', 'product_models', 'customers', 'sales_orders', 'suppliers', 'logistics_orders', 'package_sample_follows', 'daily_todos', 'customer_follow_ups', 'customer_payments', 'projects', 'stages', 'tasks', 'package_freight_records', 'inventory', 'inventory_logs', 'price_history', 'customer_groups', 'cert_matrix_files', 'cert_matrix_cells', 'cert_matrix_templates', 'cert_matrix_statuses', 'product_certs', 'product_images', 'daily_reminders', 'todo_remind_logs']
     const preserveId = tablesWithTextId.includes(tableName)
-    
-    if (convertedData.id && !uuidPattern.test(convertedData.id) && !preserveId) {
+
+    // 自增ID表：id 由数据库 BIGSERIAL 生成，前端不得传入
+    // 仅当 id 为纯数字（数据库已生成）时才保留用于 upsert，否则一律剥离走 insert
+    const tablesWithAutoId = ['activate_export_configs']
+    const isAutoIdTable = tablesWithAutoId.includes(tableName)
+
+    if (isAutoIdTable && convertedData.id) {
+      const isDbGeneratedId = /^\d+$/.test(String(convertedData.id))
+      if (!isDbGeneratedId) {
+        console.log(`[Supabase] 自增ID表 ${tableName}，剥离前端生成的id: ${convertedData.id}`)
+        delete convertedData.id
+      }
+    } else if (convertedData.id && !uuidPattern.test(convertedData.id) && !preserveId) {
       console.log(`[Supabase] 剥离非UUID格式的本地ID: ${convertedData.id}`)
       delete convertedData.id
     }
     console.log(`[Supabase] 同步表 ${tableName}, 待提交字段:`, Object.keys(convertedData))
     console.log(`[Supabase] 待提交数据:`, JSON.stringify(convertedData))
-    
+    console.log(`[Supabase] id字段状态:`, convertedData.id ? `存在 (值: ${convertedData.id})` : '不存在')
+    console.log(`[Supabase] preserveId:`, preserveId)
+
     let result
     if (!convertedData.id) {
+      console.log(`[Supabase] 使用 INSERT (无id)`)
       result = await client
         .from(tableName)
         .insert(convertedData)
         .select()
     } else {
+      console.log(`[Supabase] 使用 UPSERT (有id: ${convertedData.id})`)
       result = await client
         .from(tableName)
         .upsert(convertedData, { onConflict: 'id' })
         .select()
     }
-    
+
     const { data: resultData, error } = result
-    
+
     if (error) {
-      console.error('[Supabase] 原始错误:', error.message)
+      console.error('[Supabase] 原始错误:', error)
+      console.error('[Supabase] 错误代码:', error.code)
+      console.error('[Supabase] 错误消息:', error.message)
+      console.error('[Supabase] 详细错误:', error.details)
       const classified = classifySupabaseError(error)
       console.error('[Supabase] 分类错误:', classified.message)
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: classified.message,
         errorType: classified.type,
         rawError: error.message
       }
     }
-    
+
     const returnedId = resultData && resultData.length > 0 ? (resultData[0].id || resultData[0].delivery_id) : null
     return { success: true, id: returnedId, data: resultData }
   } catch (err) {

@@ -591,6 +591,108 @@ export function exportToCSV(headers, data, filename = 'export') {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * 导出导入模板（仅表头 + 可选示例行 + 说明）
+ * @param {String} sheetName - 工作表名称
+ * @param {Array} columns - 列配置 [{ header: '文件名', field: 'name', width: 20, sample: 'CE证书.pdf' }, ...]
+ * @param {Object} options - { includeSample: true, description: '说明文字' }
+ */
+export async function exportImportTemplate(sheetName, columns, options = {}) {
+  const { includeSample = true, description = '' } = options
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+
+  const worksheet = workbook.addWorksheet(sheetName)
+
+  // 第1行：标题
+  const titleRow = worksheet.addRow([`${sheetName}导入模板`])
+  titleRow.font = {
+    name: '微软雅黑',
+    size: 14,
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  }
+  titleRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF1a1a2e' }
+  }
+  titleRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  titleRow.height = 30
+  worksheet.mergeCells(`A1:${getColumnLetter(columns.length)}1`)
+
+  // 第2行：表头
+  const headers = columns.map(c => c.header)
+  const headerRow = worksheet.addRow(headers)
+  headerRow.font = {
+    name: '微软雅黑',
+    size: 11,
+    bold: true,
+    color: { argb: 'FFFFFFFF' }
+  }
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF409EFF' }
+  }
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+  headerRow.height = 24
+
+  // 第3行：示例行（可选）
+  if (includeSample) {
+    const sampleRow = worksheet.addRow(columns.map(c => c.sample || ''))
+    sampleRow.font = {
+      name: '微软雅黑',
+      size: 10,
+      italic: true,
+      color: { argb: 'FF909399' }
+    }
+    sampleRow.alignment = { vertical: 'middle' }
+    sampleRow.height = 20
+  }
+
+  // 说明行
+  if (description) {
+    worksheet.addRow([])
+    const descRow = worksheet.addRow([description])
+    descRow.font = {
+      name: '微软雅黑',
+      size: 10,
+      color: { argb: 'FFE6A23C' }
+    }
+    worksheet.mergeCells(`A${descRow.number}:${getColumnLetter(columns.length)}${descRow.number}`)
+  }
+
+  // 列宽
+  columns.forEach((c, i) => {
+    worksheet.getColumn(i + 1).width = c.width || 18
+  })
+
+  // 表头边框
+  const headerRange = worksheet.getCell(`A2:${getColumnLetter(columns.length)}2`)
+  headerRange.border = {
+    top: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    left: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    bottom: { style: 'thin', color: { argb: 'FFd0d0d0' } },
+    right: { style: 'thin', color: { argb: 'FFd0d0d0' } }
+  }
+
+  worksheet.freezePanes = 'A3'
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sheetName}_导入模板_${new Date().toISOString().split('T')[0]}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export function handleExportError(error, tableName) {
   const errorMessages = {
     table_missing: `数据表「${tableName}」不存在，请先在 Supabase 创建对应数据表`,

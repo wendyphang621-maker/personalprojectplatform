@@ -34,9 +34,26 @@ export async function importFromExcel(file, options = {}) {
     // 读取表头
     const headerRowData = worksheet.getRow(headerRow)
     const headers = []
-    headerRowData.eachCell((cell, colNumber) => {
-      headers[colNumber - 1] = cell.value?.toString().trim() || ''
+    headerRowData.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      let val = cell.value
+      if (val && typeof val === 'object') {
+        if (val.text) {
+          val = val.text
+        } else if (val.richText) {
+          val = val.richText.map(rt => rt.text).join('')
+        } else if (cell.text) {
+          val = cell.text
+        } else {
+          val = val.toString ? val.toString() : String(val)
+        }
+      }
+      headers[colNumber - 1] = val?.toString().trim() || ''
     })
+
+    // 诊断：输出读取到的表头
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('Excel表头读取结果:', headers.filter(h => h).map((h, i) => `[col${i+1}]${h}`))
+    }
 
     // 构建列索引映射：excelHeader -> colIndex
     const headerIndexMap = {}
@@ -73,7 +90,7 @@ export async function importFromExcel(file, options = {}) {
       if (isEmpty) return
 
       rowCount++
-      const rowData = {}
+      let rowData = {}
 
       // 读取每个单元格
       row.eachCell((cell, colNumber) => {
@@ -87,6 +104,18 @@ export async function importFromExcel(file, options = {}) {
           // 处理公式结果
           if (cell.type === ExcelJS.ValueType.Formula) {
             value = cell.result
+          }
+          // 处理超链接/富文本单元格（cell.value 可能是对象）
+          if (value && typeof value === 'object') {
+            if (value.text && typeof value.text === 'string') {
+              value = value.text
+            } else if (value.richText) {
+              value = value.richText.map(rt => rt.text).join('')
+            } else if (value.hyperlink) {
+              value = value.hyperlink.replace(/^mailto:/i, '')
+            } else {
+              value = cell.text || (value.toString ? value.toString() : String(value))
+            }
           }
           rowData[field] = value
         }

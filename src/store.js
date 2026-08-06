@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 const AUTH_KEY = 'project_workbench_auth'
 const USER_PREFIX = 'project_workbench_user_'
-const DATA_VERSION = 'v13'
+const DATA_VERSION = 'v14'
 
 const defaultUser = {
   name: '张三',
@@ -146,7 +146,32 @@ const defaultData = {
     { id: 'cr3', modelId: 'pm1', certType: 'SASO', certNo: 'SASO-2024-001', issueDate: '2024-01-10', expiryDate: '2025-07-10', certFilePath: '' },
     { id: 'cr4', modelId: 'pm2', certType: 'CE', certNo: 'CE-2024-002', issueDate: '2024-02-01', expiryDate: '2025-08-01', certFilePath: '' }
   ],
-  
+
+  // 认证文件进度矩阵 - 文件项（行）
+  certMatrixFiles: [
+    { id: 'cmf1', name: 'DOC', template: 'standard', order: 1, remark: '' },
+    { id: 'cmf2', name: 'RF test report as per DOC standards', template: 'standard', order: 2, remark: '' },
+    { id: 'cmf3', name: 'Proper data sheet with specification and image', template: 'standard', order: 3, remark: '' },
+    { id: 'cmf4', name: 'Declaration letter - VoLTE and CBS support', template: 'standard', order: 4, remark: '' },
+    { id: 'cmf5', name: 'Declaration letter for E-label', template: 'standard', order: 5, remark: '' },
+    { id: 'cmf6', name: 'EMC test report', template: 'standard', order: 6, remark: '' },
+    { id: 'cmf7', name: 'Health test report', template: 'standard', order: 7, remark: '' },
+    { id: 'cmf8', name: 'Safety test report CB', template: 'standard', order: 8, remark: '' }
+  ],
+
+  // 认证文件进度矩阵 - 单元格（机型×文件项的状态）
+  certMatrixCells: [
+    { id: 'cmc1', fileId: 'cmf1', modelId: 'pm1', status: 'done', remark: '', certId: '', certType: 'CE', isDeleted: false, updateTime: '2026-08-05' },
+    { id: 'cmc2', fileId: 'cmf2', modelId: 'pm1', status: 'in_progress', remark: '测试中', certId: '', certType: 'CE', isDeleted: false, updateTime: '2026-08-05' },
+    { id: 'cmc3', fileId: 'cmf1', modelId: 'pm2', status: 'pending', remark: '', certId: '', certType: 'CE', isDeleted: false, updateTime: '2026-08-05' }
+  ],
+
+  // 认证文件矩阵 - 自定义模板（用户可持久化自定义文件清单）
+  certMatrixTemplates: [],
+
+  // 认证文件矩阵 - 自定义状态（用户可新增状态名称/颜色）
+  certMatrixStatuses: [],
+
   dailyTodos: [
     { id: 'dt1', category: 'cat1', customerId: 'c2', modelId: '', content: '处理Ethan的样机申请', deadline: '2024-03-15', completed: false },
     { id: 'dt2', category: 'cat2', customerId: 'c1', modelId: 'pm1', content: '核对Hans订单出货数量', deadline: '2024-03-15', completed: true },
@@ -291,7 +316,20 @@ const defaultData = {
   ],
 
   deliveryAllocations: [],
-  deliverySchedules: []
+  deliverySchedules: [],
+
+  activateExportConfigs: [
+    { id: 'aec1', customer: 'Hans', updateFrequency: '每周一', receiveEmail: 'hans@example.com', model: 'E7 Elite', country: '德国', softwareVersion: 'V1.2.3\nV1.2.4', needImei: true, needFilter: false, exportTableName: 't_activate_e7_de', fotaSource: 'FOTA-DE-001', enabled: true, createdAt: '2026-08-04' },
+    { id: 'aec2', customer: 'Ethan', updateFrequency: '每日', receiveEmail: 'ethan@example.com', model: 'NE75', country: '美国', softwareVersion: 'V2.0', needImei: false, needFilter: true, exportTableName: 't_activate_ne75_us', fotaSource: 'FOTA-US-002', enabled: true, createdAt: '2026-08-04' },
+    { id: 'aec3', customer: 'Mr.Krish', updateFrequency: '每月1号', receiveEmail: 'krish@example.com', model: 'MTK6500', country: '沙特阿拉伯', softwareVersion: 'V1.0', needImei: true, needFilter: true, exportTableName: 't_activate_mtk_sa', fotaSource: 'FOTA-SA-003', enabled: false, createdAt: '2026-08-04' }
+  ],
+
+  dailyReminders: [
+    { id: 'dr1', title: '激活导出-Hans-E7 Elite-德国', businessType: 'activate_export', activateConfigId: 'aec1', remindTime: '09:00', repeatRule: 'workday', status: 'pending', remark: '每周一推送激活数据', createdAt: '2026-08-04' },
+    { id: 'dr2', title: '核对Ethan订单出货数量', businessType: 'other', activateConfigId: '', remindTime: '14:00', repeatRule: 'daily', status: 'pending', remark: '', createdAt: '2026-08-04' }
+  ],
+
+  todoRemindLogs: []
 }
 
 function loadAuth() {
@@ -333,11 +371,16 @@ function saveAuth(data) {
 
 function loadUserData(userId) {
   try {
-    const data = localStorage.getItem(USER_PREFIX + userId)
+    const storageKey = USER_PREFIX + userId
+    const data = localStorage.getItem(storageKey)
     if (data) {
       const parsed = JSON.parse(data)
+      console.log(`[数据加载] 用户 ${userId}, 数据版本: ${parsed.dataVersion}, 当前版本: ${DATA_VERSION}`)
+      console.log(`[数据加载] activateExportConfigs 数量: ${parsed.activateExportConfigs?.length || 0}`)
+      
       if (parsed.dataVersion !== DATA_VERSION) {
-        localStorage.removeItem(USER_PREFIX + userId)
+        console.log(`[数据加载] 版本不匹配，清除旧数据`)
+        localStorage.removeItem(storageKey)
         return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
       }
       
@@ -380,37 +423,195 @@ function migrateSampleDeliveries(data) {
   })
   
   if (data.productModels && Array.isArray(data.productModels)) {
-    const isCorrupted = data.productModels.some(m => {
-      return !m.chip || !m.certifications
+    // 生成短编号的计数器，用于为缺失 id 或长编号的机型自动补/改号
+    let pmIdCounter = 0
+    const existingPmIds = new Set()
+    // 先收集已是短编号的 id
+    data.productModels.forEach(m => {
+      if (m.id && m.id.startsWith('PM-') && m.id.length <= 8) {
+        existingPmIds.add(m.id)
+      }
     })
+    while (existingPmIds.has(`PM-${String(pmIdCounter + 1).padStart(3, '0')}`)) pmIdCounter++
     
-    if (isCorrupted) {
-      data.productModels = defaultData.productModels
-      console.log('[数据修复] productModels 数据异常，已重置为默认值')
-    } else {
-      data.productModels = data.productModels.map(m => {
-        if (typeof m.certifications === 'string') {
-          return {
-            ...m,
-            certifications: m.certifications ? m.certifications.split(',') : []
-          }
+    data.productModels = data.productModels.map(m => {
+      const fixed = { ...m }
+      // 核心修复：为缺失 id 或长编号(>30字符)的记录自动换短编号
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        pmIdCounter++
+        fixed.id = `PM-${String(pmIdCounter).padStart(3, '0')}`
+        while (existingPmIds.has(fixed.id)) {
+          pmIdCounter++
+          fixed.id = `PM-${String(pmIdCounter).padStart(3, '0')}`
         }
-        if (!Array.isArray(m.certifications)) {
-          return { ...m, certifications: [] }
-        }
-        return m
-      })
-    }
+        existingPmIds.add(fixed.id)
+        console.log(`[迁移] 机型 ${m.name} 编号已修正: ${m.id} -> ${fixed.id}`)
+      }
+      if (fixed.certifications == null) {
+        fixed.certifications = []
+      } else if (typeof fixed.certifications === 'string') {
+        fixed.certifications = fixed.certifications ? fixed.certifications.split(',') : []
+      } else if (!Array.isArray(fixed.certifications)) {
+        fixed.certifications = []
+      }
+      if (fixed.chip == null) fixed.chip = ''
+      if (fixed.screen == null) fixed.screen = ''
+      if (fixed.name == null) fixed.name = ''
+      if (fixed.supplierId == null) fixed.supplierId = ''
+      if (fixed.renderImagePath == null) fixed.renderImagePath = ''
+      return fixed
+    })
   }
   
   if (data.customers && Array.isArray(data.customers)) {
-    const customerFields = ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address']
-    data.customers = data.customers.map(c => {
-      const cleaned = {}
+    // 为缺失 id 或长编号的客户自动补/改 id
+    const validCustomerIds = new Set()
+    data.customers.forEach(c => {
+      if (c.id && c.id.startsWith('CUST-') && c.id.length <= 10) {
+        validCustomerIds.add(c.id)
+      }
+    })
+    let customerIdCounter = validCustomerIds.size
+    data.customers = data.customers.map((c, idx) => {
+      let id = c.id
+      const needNewId = !id || id.length > 15
+      if (needNewId) {
+        customerIdCounter++
+        id = `CUST-${String(customerIdCounter).padStart(4, '0')}`
+        while (validCustomerIds.has(id)) {
+          customerIdCounter++
+          id = `CUST-${String(customerIdCounter).padStart(4, '0')}`
+        }
+        validCustomerIds.add(id)
+        console.log(`[迁移] 客户 ${c.name} 编号已修正: ${c.id} -> ${id}`)
+      }
+      const customerFields = ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address']
+      const cleaned = { id }
       customerFields.forEach(f => {
         if (c[f] !== undefined) cleaned[f] = c[f]
       })
       return { ...cleaned, attachments: [], localMaterialPath: '', notes: c.notes || '' }
+    })
+  }
+  
+  // 为 salesOrders 补/改 id
+  if (data.salesOrders && Array.isArray(data.salesOrders)) {
+    const validSoIds = new Set()
+    data.salesOrders.forEach(s => {
+      if (s.id && s.id.startsWith('SO-') && s.id.length <= 10) validSoIds.add(s.id)
+    })
+    let soIdCounter = validSoIds.size
+    data.salesOrders = data.salesOrders.map(s => {
+      const fixed = { ...s }
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        soIdCounter++
+        fixed.id = `SO-${String(soIdCounter).padStart(5, '0')}`
+        while (validSoIds.has(fixed.id)) {
+          soIdCounter++
+          fixed.id = `SO-${String(soIdCounter).padStart(5, '0')}`
+        }
+        validSoIds.add(fixed.id)
+        console.log(`[迁移] 订单 ${s.orderNo} 编号已修正: ${s.id} -> ${fixed.id}`)
+      }
+      return fixed
+    })
+  }
+  
+  // 为 dailyTodos 补/改 id
+  if (data.dailyTodos && Array.isArray(data.dailyTodos)) {
+    const validTodoIds = new Set()
+    data.dailyTodos.forEach(t => {
+      if (t.id && t.id.startsWith('TODO-') && t.id.length <= 10) validTodoIds.add(t.id)
+    })
+    let todoIdCounter = validTodoIds.size
+    data.dailyTodos = data.dailyTodos.map(t => {
+      const fixed = { ...t }
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        todoIdCounter++
+        fixed.id = `TODO-${String(todoIdCounter).padStart(5, '0')}`
+        while (validTodoIds.has(fixed.id)) {
+          todoIdCounter++
+          fixed.id = `TODO-${String(todoIdCounter).padStart(5, '0')}`
+        }
+        validTodoIds.add(fixed.id)
+        console.log(`[迁移] 待办编号已修正: ${t.id} -> ${fixed.id}`)
+      }
+      return fixed
+    })
+  }
+  
+  // 为 suppliers 补/改 id
+  if (data.suppliers && Array.isArray(data.suppliers)) {
+    const validSupIds = new Set()
+    data.suppliers.forEach(s => {
+      if (s.id && s.id.startsWith('SUP-') && s.id.length <= 10) validSupIds.add(s.id)
+    })
+    let supIdCounter = validSupIds.size
+    data.suppliers = data.suppliers.map(s => {
+      const fixed = { ...s }
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        supIdCounter++
+        fixed.id = `SUP-${String(supIdCounter).padStart(4, '0')}`
+        while (validSupIds.has(fixed.id)) {
+          supIdCounter++
+          fixed.id = `SUP-${String(supIdCounter).padStart(4, '0')}`
+        }
+        validSupIds.add(fixed.id)
+        console.log(`[迁移] 供应商 ${s.name} 编号已修正: ${s.id} -> ${fixed.id}`)
+      }
+      return fixed
+    })
+  }
+  
+  // 为 activateExportConfigs 补/改 id
+  if (data.activateExportConfigs && Array.isArray(data.activateExportConfigs)) {
+    const validAecIds = new Set()
+    data.activateExportConfigs.forEach(a => {
+      if (a.id && a.id.startsWith('AEC-') && a.id.length <= 10) validAecIds.add(a.id)
+    })
+    let aecIdCounter = validAecIds.size
+    data.activateExportConfigs = data.activateExportConfigs.map(a => {
+      const fixed = { ...a }
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        aecIdCounter++
+        fixed.id = `AEC-${String(aecIdCounter).padStart(3, '0')}`
+        while (validAecIds.has(fixed.id)) {
+          aecIdCounter++
+          fixed.id = `AEC-${String(aecIdCounter).padStart(3, '0')}`
+        }
+        validAecIds.add(fixed.id)
+        console.log(`[迁移] 激活导出配置 ${a.customer} 编号已修正: ${a.id} -> ${fixed.id}`)
+      }
+      return fixed
+    })
+  }
+  
+  // 为 certMatrixCells 补/改 id
+  if (data.certMatrixCells && Array.isArray(data.certMatrixCells)) {
+    const validCmcIds = new Set()
+    data.certMatrixCells.forEach(c => {
+      if (c.id && c.id.startsWith('CMC-') && c.id.length <= 10) validCmcIds.add(c.id)
+    })
+    let cmcIdCounter = validCmcIds.size
+    data.certMatrixCells = data.certMatrixCells.map(c => {
+      const fixed = { ...c }
+      const needNewId = !fixed.id || fixed.id.length > 15
+      if (needNewId) {
+        cmcIdCounter++
+        fixed.id = `CMC-${String(cmcIdCounter).padStart(3, '0')}`
+        while (validCmcIds.has(fixed.id)) {
+          cmcIdCounter++
+          fixed.id = `CMC-${String(cmcIdCounter).padStart(3, '0')}`
+        }
+        validCmcIds.add(fixed.id)
+        console.log(`[迁移] 认证矩阵单元格编号已修正: ${c.id} -> ${fixed.id}`)
+      }
+      return fixed
     })
   }
   
@@ -426,7 +627,10 @@ function saveUserData(userId, data) {
 }
 
 function saveToLocalStorage() {
-  if (!currentUserId) return
+  if (!currentUserId) {
+    console.warn('[数据保存] currentUserId 为空，跳过保存')
+    return
+  }
   try {
     const data = {
       user: store.user,
@@ -440,6 +644,10 @@ function saveToLocalStorage() {
       dailyTodos: store.dailyTodos,
       orderProducts: store.orderProducts,
       certRecords: store.certRecords,
+      certMatrixFiles: store.certMatrixFiles,
+      certMatrixCells: store.certMatrixCells,
+      certMatrixTemplates: store.certMatrixTemplates,
+      certMatrixStatuses: store.certMatrixStatuses,
       suppliers: store.suppliers,
       logisticsBills: store.logisticsBills,
       dailyReports: store.dailyReports,
@@ -449,9 +657,14 @@ function saveToLocalStorage() {
       salesOrders: store.salesOrders,
       deliveryAllocations: store.deliveryAllocations,
       deliverySchedules: store.deliverySchedules,
+      activateExportConfigs: store.activateExportConfigs,
+      dailyReminders: store.dailyReminders,
+      todoRemindLogs: store.todoRemindLogs,
       dataVersion: DATA_VERSION
     }
-    localStorage.setItem(USER_PREFIX + currentUserId, JSON.stringify(data))
+    const storageKey = USER_PREFIX + currentUserId
+    localStorage.setItem(storageKey, JSON.stringify(data))
+    console.log(`[数据保存] 用户 ${currentUserId}, activateExportConfigs 数量: ${store.activateExportConfigs.length}`)
   } catch (e) {
     console.error('Local storage save failed:', e)
   }
@@ -604,21 +817,79 @@ export function updateAuthUser(userId, updates) {
 
 const idCounters = {}
 
-export function generateId(prefix = '') {
-  const now = new Date()
-  const dateStr = now.getFullYear().toString().slice(2) + 
-                  String(now.getMonth() + 1).padStart(2, '0') + 
-                  String(now.getDate()).padStart(2, '0')
+const SHORT_ID_FORMATS = {
+  c: { prefix: 'CUST', pad: 4, storeKey: 'customers' },
+  cust: { prefix: 'CUST', pad: 4, storeKey: 'customers' },
+  p: { prefix: 'PRJ', pad: 3, storeKey: 'projects' },
+  prj: { prefix: 'PRJ', pad: 3, storeKey: 'projects' },
+  s: { prefix: 'SUP', pad: 4, storeKey: 'suppliers' },
+  sup: { prefix: 'SUP', pad: 4, storeKey: 'suppliers' },
+  t: { prefix: 'TASK', pad: 3, storeKey: 'tasks' },
+  task: { prefix: 'TASK', pad: 3, storeKey: 'tasks' },
+  dt: { prefix: 'TODO', pad: 5, storeKey: 'dailyTodos' },
+  todo: { prefix: 'TODO', pad: 5, storeKey: 'dailyTodos' },
+  f: { prefix: 'FILE', pad: 4, storeKey: 'files' },
+  file: { prefix: 'FILE', pad: 4, storeKey: 'files' },
+  cr: { prefix: 'CR', pad: 4, storeKey: 'certRecords' },
+  cert: { prefix: 'CERT', pad: 4, storeKey: 'certRecords' },
+  lb: { prefix: 'LB', pad: 4, storeKey: 'logisticsBills' },
+  tag: { prefix: 'TAG', pad: 3, storeKey: 'tags' },
+  cat: { prefix: 'CAT', pad: 3, storeKey: 'categories' },
+  gb: { prefix: 'GB', pad: 3, storeKey: 'groups' },
+  cb: { prefix: 'CB', pad: 3, storeKey: 'customerGroups' },
+  ps: { prefix: 'PS', pad: 3, storeKey: 'productSeries' },
+  u: { prefix: 'U', pad: 3, storeKey: 'users' },
+  model: { prefix: 'PM', pad: 3, storeKey: 'productModels' },
+  pm: { prefix: 'PM', pad: 3, storeKey: 'productModels' },
+  so: { prefix: 'SO', pad: 5, storeKey: 'salesOrders' },
+  aec: { prefix: 'AEC', pad: 3, storeKey: 'activateExportConfigs' },
+  cmf: { prefix: 'CMF', pad: 3, storeKey: 'certMatrixFiles' },
+  cmc: { prefix: 'CMC', pad: 3, storeKey: 'certMatrixCells' },
+  cmt: { prefix: 'CMT', pad: 3, storeKey: 'certMatrixTemplates' }
+}
+
+function getNextCounter(fmtPrefix, storeKey) {
+  if (idCounters[fmtPrefix]) return idCounters[fmtPrefix]
   
-  const key = prefix + dateStr
-  if (!idCounters[key]) {
-    idCounters[key] = 1
-  } else {
-    idCounters[key]++
+  try {
+    const data = store[storeKey]
+    if (Array.isArray(data)) {
+      let maxNum = 0
+      data.forEach(item => {
+        if (item && item.id) {
+          const match = item.id.match(new RegExp(`^${fmtPrefix}-(\\d+)$`))
+          if (match) {
+            const num = parseInt(match[1])
+            if (num > maxNum) maxNum = num
+          }
+        }
+      })
+      idCounters[fmtPrefix] = maxNum + 1
+      return idCounters[fmtPrefix]
+    }
+  } catch (e) {
+    // store might not be ready yet
   }
   
-  const seq = String(idCounters[key]).padStart(4, '0')
-  return prefix + dateStr + seq
+  idCounters[fmtPrefix] = 1
+  return 1
+}
+
+export function generateId(prefix = '') {
+  const format = SHORT_ID_FORMATS[prefix]
+  if (format) {
+    const { prefix: fmtPrefix, pad, storeKey } = format
+    const nextNum = getNextCounter(fmtPrefix, storeKey)
+    idCounters[fmtPrefix] = nextNum + 1
+    return `${fmtPrefix}-${String(nextNum).padStart(pad, '0')}`
+  }
+  
+  if (!idCounters[prefix]) {
+    idCounters[prefix] = 1
+  } else {
+    idCounters[prefix]++
+  }
+  return `${prefix}-${String(idCounters[prefix]).padStart(3, '0')}`
 }
 
 const permissionMatrix = {
@@ -1177,6 +1448,109 @@ export async function checkDataConflict() {
   }
 }
 
+// 轻量权限检测
+export async function checkSupabasePermissions() {
+  const { getSupabase } = await import('./supabase.js')
+  const client = await getSupabase()
+  if (!client) return { ok: false, error: 'Supabase not configured' }
+  
+  const testTables = ['customers', 'product_models', 'sales_orders']
+  let failedCount = 0
+  const failedTables = []
+  
+  for (const table of testTables) {
+    try {
+      const { data, error } = await client.from(table).select('id', { count: 'exact', head: true })
+      if (error) {
+        failedCount++
+        failedTables.push({ table, error: error.message })
+      }
+    } catch (e) {
+      failedCount++
+      failedTables.push({ table, error: e.message })
+    }
+  }
+  
+  if (failedCount === 0) {
+    // 权限通过，清除失败标记
+    localStorage.removeItem('supabase_rls_failed')
+    return { ok: true, message: '所有表权限正常' }
+  } else {
+    return { ok: false, failedCount, failedTables, message: `${failedCount}/${testTables.length} 表权限失败` }
+  }
+}
+
+// 同步本地数据到云端（一键同步）
+export async function syncLocalToCloud(showToast = true) {
+  const { getSupabase, syncToSupabase } = await import('./supabase.js')
+  const client = await getSupabase()
+  if (!client) {
+    return { success: false, error: 'Supabase not configured' }
+  }
+  
+  const rlsCheck = await checkSupabasePermissions()
+  if (!rlsCheck.ok) {
+    return { success: false, error: 'RLS 权限未修复，请先执行 fix_full_permissions.sql' }
+  }
+  
+  const dataMap = {
+    'customers': store.customers,
+    'product_models': store.productModels,
+    'sales_orders': store.salesOrders,
+    'sample_deliveries': store.sampleDeliveries,
+    'logistics_orders': store.logisticsBills,
+    'daily_todos': store.dailyTodos,
+    'projects': store.projects,
+    'stages': store.stages,
+    'tasks': store.tasks,
+    'activate_export_configs': store.activateExportConfigs,
+    'cert_matrix_files': store.certMatrixFiles,
+    'cert_matrix_cells': store.certMatrixCells,
+    'cert_matrix_templates': store.certMatrixTemplates,
+    'cert_matrix_statuses': store.certMatrixStatuses,
+    'suppliers': store.suppliers,
+    'package_sample_follows': store.packageSampleFollows
+  }
+  
+  let totalUploaded = 0
+  let totalFailed = 0
+  const failures = []
+  
+  for (const [tableName, records] of Object.entries(dataMap)) {
+    if (!records || !Array.isArray(records)) continue
+    
+    for (const record of records) {
+      try {
+        const result = await syncToSupabase(tableName, record)
+        if (result.success) {
+          totalUploaded++
+        } else {
+          totalFailed++
+          failures.push({ table: tableName, id: record.id, error: result.error })
+        }
+      } catch (e) {
+        totalFailed++
+        failures.push({ table: tableName, id: record.id, error: e.message })
+      }
+    }
+  }
+  
+  // 同步完成后切回云端模式
+  if (totalUploaded > 0 && totalFailed === 0) {
+    store.localMode = false
+    localStorage.removeItem('supabase_rls_failed')
+    saveToLocalStorage()
+  }
+  
+  return {
+    success: true,
+    uploaded: totalUploaded,
+    failed: totalFailed,
+    failures,
+    switchedToCloud: totalUploaded > 0 && totalFailed === 0
+  }
+}
+
 export async function syncAllFromSupabase(showToast = true) {
   if (store.localMode) {
     console.log('[同步] ⚠️ 本地模式已开启，跳过云端同步')
@@ -1209,6 +1583,10 @@ export async function syncAllFromSupabase(showToast = true) {
       { name: 'sales_orders', key: 'salesOrders' },
       { name: 'product_models', key: 'productModels' },
       { name: 'cert_records', key: 'certRecords' },
+      { name: 'cert_matrix_files', key: 'certMatrixFiles' },
+      { name: 'cert_matrix_cells', key: 'certMatrixCells' },
+      { name: 'cert_matrix_templates', key: 'certMatrixTemplates' },
+      { name: 'cert_matrix_statuses', key: 'certMatrixStatuses' },
       { name: 'suppliers', key: 'suppliers' },
       { name: 'logistics_bills', key: 'logisticsBills' },
       { name: 'daily_todos', key: 'dailyTodos' },
@@ -1217,7 +1595,10 @@ export async function syncAllFromSupabase(showToast = true) {
       { name: 'projects', key: 'projects' },
       { name: 'stages', key: 'stages' },
       { name: 'tasks', key: 'tasks' },
-      { name: 'package_sample_follows', key: 'packageSampleFollows' }
+      { name: 'package_sample_follows', key: 'packageSampleFollows' },
+      { name: 'activate_export_configs', key: 'activateExportConfigs' },
+      { name: 'daily_reminders', key: 'dailyReminders' },
+      { name: 'todo_remind_logs', key: 'todoRemindLogs' }
     ]
     
     let totalCount = 0
@@ -1233,13 +1614,29 @@ export async function syncAllFromSupabase(showToast = true) {
         successCount++
         console.log(`[同步] ✅ ${table.key}: ${data.length} 条记录`)
       } else {
-        console.log(`[同步] ⚠️ ${table.key}: 无数据或加载失败，保留默认数据`)
+        // 关键修复：加载失败时保留本地数据，不要用空数组覆盖
+        console.warn(`[同步] ⚠️ ${table.key}: 云端加载失败(${result.error || '无数据'})，保留本地数据(${store[table.key]?.length || 0} 条)`)
+        if (result.errorType === 'permission') {
+          // RLS 权限不足，标记为永久失败
+          console.error(`[同步] ❌ ${table.key} RLS 权限不足，将自动降级为本地模式`)
+          localStorage.setItem('supabase_rls_failed', new Date().toISOString())
+        }
       }
     }
     
     console.log('=======================================')
     console.log(`[同步] 同步完成: ${successCount}/${tables.length} 表成功, 共 ${totalCount} 条记录`)
     console.log('=======================================')
+    
+    // 如果失败的表太多，自动降级为本地模式
+    if (showToast && successCount < tables.length / 2) {
+      console.warn(`[同步] ⚠️ 超过半数表同步失败，自动降级为本地模式`)
+      toggleLocalMode(true)
+      setTimeout(() => {
+        alert(`⚠️ 检测到 Supabase 权限问题（失败 ${tables.length - successCount} 个表），\n已自动切换为【本地模式】，数据仍可正常使用。\n\n修复权限后可在【设置 → Supabase 配置】中重新开启云端同步。`)
+      }, 100)
+      return { success: true, totalCount, successCount, autoSwitchedToLocal: true }
+    }
     
     if (showToast && totalCount > 0) {
       alert(`数据同步完成！\n\n共加载 ${totalCount} 条记录\n${successCount}/${tables.length} 个数据表`)
@@ -1291,12 +1688,17 @@ export function toggleTaskComplete(taskId) {
 
 export function addFileToLibrary(file) {
   const newFile = {
-    id: generateId('f'),
+    id: file.id || generateId('f'),
     name: file.name,
-    size: file.size,
-    type: file.type,
+    size: file.size || 0,
+    type: file.type || 'other',
     path: file.path || '',
     folder: file.folder || '',
+    expiryDate: file.expiryDate || '',
+    logisticsNo: file.logisticsNo || '',
+    remark: file.remark || '',
+    data: file.data || '',
+    uploadDate: file.uploadDate || new Date().toISOString().split('T')[0],
     uploadedAt: new Date().toISOString()
   }
   store.fileLibrary.files.push(newFile)
@@ -1402,9 +1804,23 @@ export function deleteDailyTodoItem(id) {
   return { success: false, error: '待办不存在' }
 }
 
+// 生成机型短序号 ID (PM-001, PM-002 ...)
+let modelIdCounter = 0
+function nextModelShortId() {
+  if (modelIdCounter === 0) {
+    const maxId = store.productModels.reduce((max, m) => {
+      const match = (m.id || '').match(/^PM-(\d+)$/)
+      return match ? Math.max(max, parseInt(match[1])) : max
+    }, 0)
+    modelIdCounter = maxId
+  }
+  modelIdCounter++
+  return `PM-${String(modelIdCounter).padStart(3, '0')}`
+}
+
 export function addProductModel(data) {
   const model = {
-    id: generateId('pm'),
+    id: data.id || nextModelShortId(),
     name: data.name || '',
     chip: data.chip || '',
     screen: data.screen || '',
@@ -1413,6 +1829,7 @@ export function addProductModel(data) {
     supplierId: data.supplierId || ''
   }
   store.productModels.push(model)
+  saveToLocalStorage()
   return model
 }
 
@@ -1420,19 +1837,53 @@ export function updateProductModel(model) {
   const idx = store.productModels.findIndex(m => m.id === model.id)
   if (idx > -1) {
     store.productModels[idx] = { ...model }
+    saveToLocalStorage()
   }
 }
 
-export function deleteProductModel(model) {
-  const idx = store.productModels.findIndex(m => m.id === model.id)
+// 更新机型编号（级联更新所有引用）
+export function updateProductModelId(oldId, newId) {
+  // 1. 更新 productModels 表
+  const model = store.productModels.find(m => m.id === oldId)
+  if (model) {
+    model.id = newId
+  }
+  // 2. 更新认证矩阵 cells
+  store.certMatrixCells.forEach(c => {
+    if (c.modelId === oldId) c.modelId = newId
+  })
+  // 3. 更新认证档案中的 model 字段
+  store.certRecords.forEach(c => {
+    if (c.model === oldId) c.model = newId
+  })
+  // 4. 更新物料中的机型引用
+  if (store.materials) {
+    store.materials.forEach(m => {
+      if (m.model === oldId) m.model = newId
+    })
+  }
+  saveToLocalStorage()
+  return { success: true }
+}
+
+export function deleteProductModel(modelOrId) {
+  const id = typeof modelOrId === 'string' ? modelOrId : modelOrId.id
+  const idx = store.productModels.findIndex(m => m.id === id)
   if (idx > -1) {
     store.productModels.splice(idx, 1)
+    // 级联清理：删除该机型的认证矩阵单元格
+    store.certMatrixCells = store.certMatrixCells.filter(c => c.modelId !== id)
+    // 级联清理：将认证档案中引用该机型的设为空
+    store.certRecords.forEach(c => { if (c.model === id) c.model = '' })
+    saveToLocalStorage()
+    return { success: true }
   }
+  return { success: false, error: '机型不存在' }
 }
 
 export function addCertRecord(data) {
   const record = {
-    id: generateId('cr'),
+    id: data.id?.trim() || generateId('cr'),
     modelId: data.modelId || '',
     certType: data.certType || '',
     certNo: data.certNo || '',
@@ -1441,6 +1892,7 @@ export function addCertRecord(data) {
     certFilePath: data.certFilePath || ''
   }
   store.certRecords.push(record)
+  saveToLocalStorage()
   return record
 }
 
@@ -1448,6 +1900,7 @@ export function updateCertRecord(record) {
   const idx = store.certRecords.findIndex(r => r.id === record.id)
   if (idx > -1) {
     store.certRecords[idx] = { ...record }
+    saveToLocalStorage()
   }
 }
 
@@ -1455,7 +1908,343 @@ export function deleteCertRecord(record) {
   const idx = store.certRecords.findIndex(r => r.id === record.id)
   if (idx > -1) {
     store.certRecords.splice(idx, 1)
+    saveToLocalStorage()
   }
+}
+
+// === 认证文件进度矩阵管理 ===
+
+// 认证文件模板预设
+export const CERT_FILE_TEMPLATES = {
+  standard: {
+    name: '标准全套（8项）',
+    files: [
+      'DOC',
+      'RF test report as per DOC standards',
+      'Proper data sheet with specification and image',
+      'Declaration letter - VoLTE and CBS support',
+      'Declaration letter for E-label',
+      'EMC test report',
+      'Health test report',
+      'Safety test report CB'
+    ]
+  },
+  cb: {
+    name: 'CB 认证配套',
+    files: [
+      'DOC',
+      'RF test report as per DOC standards',
+      'Safety test report CB',
+      'EMC test report',
+      'Proper data sheet with specification and image'
+    ]
+  },
+  ce: {
+    name: 'CE 认证配套',
+    files: [
+      'DOC',
+      'RF test report as per DOC standards',
+      'EMC test report',
+      'Health test report',
+      'Safety test report CB',
+      'Declaration letter for E-label'
+    ]
+  },
+  saso: {
+    name: 'SASO 认证配套',
+    files: [
+      'DOC',
+      'RF test report as per DOC standards',
+      'SASO COC 证书',
+      'Proper data sheet with specification and image',
+      'EMC test report'
+    ]
+  },
+  fcc: {
+    name: 'FCC 认证配套',
+    files: [
+      'DOC',
+      'RF test report as per FCC standards',
+      'Declaration letter for E-label',
+      'Proper data sheet with specification and image'
+    ]
+  }
+}
+
+// 矩阵进度状态配置
+export const MATRIX_STATUS_CONFIG = {
+  done: { label: '已完成', color: '#67C23A', bg: '#f0f9eb' },
+  pending: { label: '待准备', color: '#E6A23C', bg: '#fdf6ec' },
+  in_progress: { label: '进行中', color: '#409EFF', bg: '#ecf5ff' },
+  missing: { label: '缺失', color: '#F56C6C', bg: '#fef0f0' }
+}
+
+// 添加文件项（行）
+export function addCertMatrixFile(name, template = 'custom', category = '') {
+  const maxOrder = store.certMatrixFiles.reduce((max, f) => Math.max(max, f.order || 0), 0)
+  const file = {
+    id: 'cmf' + Date.now() + Math.random().toString(36).slice(2, 6),
+    name: name || '',
+    template: template,
+    category: category,
+    order: maxOrder + 1,
+    remark: '',
+    isDeleted: false,
+    updateTime: new Date().toISOString().split('T')[0]
+  }
+  store.certMatrixFiles.push(file)
+  saveToLocalStorage()
+  return file
+}
+
+// 更新文件项
+export function updateCertMatrixFile(id, updates) {
+  const idx = store.certMatrixFiles.findIndex(f => f.id === id)
+  if (idx > -1) {
+    store.certMatrixFiles[idx] = { ...store.certMatrixFiles[idx], ...updates, updateTime: new Date().toISOString().split('T')[0] }
+    saveToLocalStorage()
+  }
+}
+
+// 删除文件项（软删除：标记 isDeleted，保留历史可回溯）
+export function deleteCertMatrixFile(id) {
+  const file = store.certMatrixFiles.find(f => f.id === id)
+  if (file) {
+    file.isDeleted = true
+    file.updateTime = new Date().toISOString().split('T')[0]
+    // 关联单元格也软删除
+    store.certMatrixCells.forEach(c => {
+      if (c.fileId === id) {
+        c.isDeleted = true
+        c.updateTime = new Date().toISOString().split('T')[0]
+      }
+    })
+    reorderMatrixFiles()
+    saveToLocalStorage()
+  }
+}
+
+// 自动重排 order（按当前非软删除文件项的顺序重置 order，避免断层）
+export function reorderMatrixFiles() {
+  const activeFiles = store.certMatrixFiles
+    .filter(f => !f.isDeleted)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  activeFiles.forEach((f, idx) => {
+    f.order = idx + 1
+  })
+}
+
+// 移动文件项顺序（拖拽排序：将 fileId 移动到 targetIndex 位置）
+export function moveMatrixFile(fileId, targetIndex) {
+  const activeFiles = store.certMatrixFiles
+    .filter(f => !f.isDeleted)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  const fromIdx = activeFiles.findIndex(f => f.id === fileId)
+  if (fromIdx === -1) return
+  const [moved] = activeFiles.splice(fromIdx, 1)
+  activeFiles.splice(targetIndex, 0, moved)
+  activeFiles.forEach((f, idx) => {
+    f.order = idx + 1
+  })
+  saveToLocalStorage()
+}
+
+// 设置单元格状态（fileId + modelId 唯一确定单元格）
+export function setMatrixCell(fileId, modelId, status, remark, certId, certType) {
+  let cell = store.certMatrixCells.find(c => c.fileId === fileId && c.modelId === modelId && !c.isDeleted)
+  const now = new Date().toISOString().split('T')[0]
+  if (cell) {
+    cell.status = status
+    if (remark !== undefined) cell.remark = remark
+    if (certId !== undefined) cell.certId = certId
+    if (certType !== undefined) cell.certType = certType
+    cell.isDeleted = false
+    cell.updateTime = now
+  } else {
+    cell = {
+      id: 'cmc' + Date.now() + Math.random().toString(36).slice(2, 6),
+      fileId: fileId,
+      modelId: modelId,
+      status: status,
+      remark: remark || '',
+      certId: certId || '',
+      certType: certType || '',
+      isDeleted: false,
+      updateTime: now
+    }
+    store.certMatrixCells.push(cell)
+  }
+  saveToLocalStorage()
+  return cell
+}
+
+// 获取单元格（过滤软删除）
+export function getMatrixCell(fileId, modelId) {
+  return store.certMatrixCells.find(c => c.fileId === fileId && c.modelId === modelId && !c.isDeleted)
+}
+
+// 批量设置整行状态（某文件项下所有机型的状态）
+export function batchSetRowStatus(fileId, status) {
+  const now = new Date().toISOString().split('T')[0]
+  store.certMatrixCells.forEach(c => {
+    if (c.fileId === fileId && !c.isDeleted) {
+      c.status = status
+      c.updateTime = now
+    }
+  })
+  saveToLocalStorage()
+}
+
+// 批量设置整列状态（某机型下所有文件项的状态）
+export function batchSetColStatus(modelId, status) {
+  const now = new Date().toISOString().split('T')[0]
+  store.certMatrixCells.forEach(c => {
+    if (c.modelId === modelId && !c.isDeleted) {
+      c.status = status
+      c.updateTime = now
+    }
+  })
+  saveToLocalStorage()
+}
+
+// 批量清空备注（选中单元格）
+export function batchClearRemarks(cellIds) {
+  store.certMatrixCells.forEach(c => {
+    if (cellIds.includes(c.id)) {
+      c.remark = ''
+      c.updateTime = new Date().toISOString().split('T')[0]
+    }
+  })
+  saveToLocalStorage()
+}
+
+// 应用模板（替换现有文件项）
+export function applyCertTemplate(templateKey) {
+  // 优先查找自定义模板
+  const customTpl = store.certMatrixTemplates.find(t => t.id === templateKey)
+  const files = customTpl ? customTpl.files : CERT_FILE_TEMPLATES[templateKey]?.files
+  if (!files) return false
+  // 现有文件项全部软删除
+  store.certMatrixFiles.forEach(f => { f.isDeleted = true })
+  store.certMatrixCells.forEach(c => { c.isDeleted = true })
+  // 添加模板文件项
+  files.forEach((name, idx) => {
+    store.certMatrixFiles.push({
+      id: 'cmf' + Date.now() + '_' + idx,
+      name: name,
+      template: templateKey,
+      category: '',
+      order: idx + 1,
+      remark: '',
+      isDeleted: false,
+      updateTime: new Date().toISOString().split('T')[0]
+    })
+  })
+  saveToLocalStorage()
+  return true
+}
+
+// 保存自定义模板（持久化用户自定义文件清单）
+export function saveCertMatrixTemplate(name, files, snapshot = null) {
+  const tpl = {
+    id: 'cmt' + Date.now(),
+    name: name,
+    files: files,
+    snapshot: snapshot,
+    createdAt: new Date().toISOString().split('T')[0]
+  }
+  store.certMatrixTemplates.push(tpl)
+  saveToLocalStorage()
+  return tpl
+}
+
+// 删除自定义模板
+export function deleteCertMatrixTemplate(id) {
+  const idx = store.certMatrixTemplates.findIndex(t => t.id === id)
+  if (idx > -1) {
+    store.certMatrixTemplates.splice(idx, 1)
+    saveToLocalStorage()
+  }
+}
+
+// 新增自定义状态
+export function addCertMatrixStatus(name, color, bg) {
+  const status = {
+    id: 'cms' + Date.now(),
+    key: 'custom_' + Date.now(),
+    name: name,
+    color: color || '#909399',
+    bg: bg || '#f4f4f5'
+  }
+  store.certMatrixStatuses.push(status)
+  saveToLocalStorage()
+  return status
+}
+
+// 删除自定义状态
+export function deleteCertMatrixStatus(id) {
+  const idx = store.certMatrixStatuses.findIndex(s => s.id === id)
+  if (idx > -1) {
+    store.certMatrixStatuses.splice(idx, 1)
+    saveToLocalStorage()
+  }
+}
+
+// 获取所有状态配置（内置 + 自定义）
+export function getAllMatrixStatuses() {
+  const builtin = Object.entries(MATRIX_STATUS_CONFIG).map(([key, cfg]) => ({
+    id: 'builtin_' + key,
+    key: key,
+    name: cfg.label,
+    color: cfg.color,
+    bg: cfg.bg
+  }))
+  return [...builtin, ...store.certMatrixStatuses]
+}
+
+// 批量添加机型列（为每个文件项创建空单元格）
+export function addModelsToMatrix(modelIds) {
+  const now = new Date().toISOString().split('T')[0]
+  modelIds.forEach(modelId => {
+    store.certMatrixFiles.forEach(file => {
+      if (file.isDeleted) return
+      const exists = store.certMatrixCells.some(c => c.fileId === file.id && c.modelId === modelId && !c.isDeleted)
+      if (!exists) {
+        // 复用已软删除的单元格（恢复）
+        const softDeleted = store.certMatrixCells.find(c => c.fileId === file.id && c.modelId === modelId && c.isDeleted)
+        if (softDeleted) {
+          softDeleted.isDeleted = false
+          softDeleted.status = 'missing'
+          softDeleted.updateTime = now
+        } else {
+          store.certMatrixCells.push({
+            id: 'cmc' + Date.now() + Math.random().toString(36).slice(2, 6),
+            fileId: file.id,
+            modelId: modelId,
+            status: 'missing',
+            remark: '',
+            certId: '',
+            certType: '',
+            isDeleted: false,
+            updateTime: now
+          })
+        }
+      }
+    })
+  })
+  saveToLocalStorage()
+}
+
+// 移除机型列（软删除该机型所有单元格）
+export function removeModelColumn(modelId) {
+  const now = new Date().toISOString().split('T')[0]
+  store.certMatrixCells.forEach(c => {
+    if (c.modelId === modelId && !c.isDeleted) {
+      c.isDeleted = true
+      c.updateTime = now
+    }
+  })
+  saveToLocalStorage()
 }
 
 export function addSupplier(data) {
@@ -1905,4 +2694,113 @@ export function getGBProjects() {
 
 export function getColorBoxProjects() {
   return store.colorBoxProjects
+}
+
+// === 权限工具 ===
+export function canBatchDelete() {
+  return authStore.currentUser?.role === 'admin'
+}
+
+export function canEditActivateConfig() {
+  const role = authStore.currentUser?.role
+  return role === 'admin' || role === 'sales_assistant'
+}
+
+// === 激活数据导出配置 CRUD ===
+export function addActivateExportConfig(data) {
+  const cfg = {
+    id: data.id?.trim() || ('aec' + Date.now()),
+    customer: data.customer || '',
+    updateFrequency: data.updateFrequency || '',
+    receiveEmail: data.receiveEmail || '',
+    model: data.model || '',
+    country: data.country || '',
+    softwareVersion: data.softwareVersion || '',
+    needImei: !!data.needImei,
+    needFilter: !!data.needFilter,
+    exportTableName: data.exportTableName || '',
+    fotaSource: data.fotaSource || '',
+    enabled: data.enabled !== false,
+    createdAt: new Date().toISOString().split('T')[0]
+  }
+  store.activateExportConfigs.push(cfg)
+  saveToLocalStorage()
+  return cfg
+}
+
+export function updateActivateExportConfig(id, updates) {
+  const idx = store.activateExportConfigs.findIndex(c => c.id === id)
+  if (idx > -1) {
+    Object.assign(store.activateExportConfigs[idx], updates)
+    saveToLocalStorage()
+    return { success: true }
+  }
+  return { success: false, error: '配置不存在' }
+}
+
+export function deleteActivateExportConfig(id) {
+  const idx = store.activateExportConfigs.findIndex(c => c.id === id)
+  if (idx > -1) {
+    store.activateExportConfigs.splice(idx, 1)
+    saveToLocalStorage()
+    return { success: true }
+  }
+  return { success: false, error: '配置不存在' }
+}
+
+// === 每日待办清单 CRUD ===
+export function addDailyReminder(data) {
+  const r = {
+    id: data.id?.trim() || ('dr' + Date.now()),
+    title: data.title || '',
+    businessType: data.businessType || 'other',
+    activateConfigId: data.activateConfigId || '',
+    remindTime: data.remindTime || '09:00',
+    repeatRule: data.repeatRule || 'once',
+    status: 'pending',
+    remark: data.remark || '',
+    createdAt: new Date().toISOString().split('T')[0]
+  }
+  store.dailyReminders.push(r)
+  saveToLocalStorage()
+  return r
+}
+
+export function updateDailyReminder(id, updates) {
+  const idx = store.dailyReminders.findIndex(r => r.id === id)
+  if (idx > -1) {
+    Object.assign(store.dailyReminders[idx], updates)
+    saveToLocalStorage()
+    return { success: true }
+  }
+  return { success: false, error: '待办不存在' }
+}
+
+export function deleteDailyReminder(id) {
+  const idx = store.dailyReminders.findIndex(r => r.id === id)
+  if (idx > -1) {
+    store.dailyReminders.splice(idx, 1)
+    saveToLocalStorage()
+    return { success: true }
+  }
+  return { success: false, error: '待办不存在' }
+}
+
+// === 提醒日志（控制单日任务不重复提醒） ===
+export function hasRemindedToday(todoId) {
+  const today = new Date().toISOString().split('T')[0]
+  return store.todoRemindLogs.some(log => log.todoId === todoId && log.date === today)
+}
+
+export function markReminded(todoId) {
+  const today = new Date().toISOString().split('T')[0]
+  if (!hasRemindedToday(todoId)) {
+    store.todoRemindLogs.push({ todoId, date: today })
+    saveToLocalStorage()
+  }
+}
+
+// 手动持久化当前 store 数据到 localStorage（供外部调用）
+export function persistData() {
+  saveToLocalStorage()
 }

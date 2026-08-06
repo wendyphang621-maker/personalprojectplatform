@@ -657,7 +657,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase } from '../store.js'
+import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'

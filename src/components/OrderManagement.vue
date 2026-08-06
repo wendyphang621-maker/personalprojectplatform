@@ -260,6 +260,9 @@
           </div>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="激活数据导出配置" name="activate">
+        <ActivateConfigManager />
+      </el-tab-pane>
     </el-tabs>
     
     <el-dialog v-model="showOrderDialog" :title="isEditingOrder ? '编辑订单' : '新增订单'" width="500px">
@@ -577,6 +580,7 @@ import { Upload } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
+import ActivateConfigManager from './ActivateConfigManager.vue'
 
 const props = defineProps({
   currentSubPage: {

@@ -197,6 +197,15 @@
     </aside>
     
     <main class="main-content">
+      <!-- 本地模式警告条 -->
+      <div v-if="store.localMode" class="local-mode-warning">
+        <div class="warning-content">
+          <span class="warning-icon">⚠️</span>
+          <span class="warning-text">当前处于【本地离线模式】，数据仅保存在浏览器，不会自动同步云端</span>
+          <el-button type="warning" size="small" @click="openSupabaseConfig">前往设置修复</el-button>
+          <el-button size="small" @click="syncLocalNow">一键同步云端</el-button>
+        </div>
+      </div>
       <header class="top-toolbar" v-if="isProjectPage">
         <div class="toolbar-left">
           <el-button type="primary" @click="showNewProjectDialog = true">
@@ -472,12 +481,31 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 同步结果详情对话框 -->
+    <el-dialog v-model="showSyncResultDialog" title="同步结果详情" width="720px">
+      <div v-for="table in syncResultDetails" :key="table.tableName" style="margin-bottom: 16px;">
+        <el-divider :content-position="'left'">{{ table.label }}</el-divider>
+        <div style="display: flex; gap: 12px; margin-bottom: 10px;">
+          <el-tag type="success" size="small">成功: {{ table.success }}</el-tag>
+          <el-tag type="danger" size="small" v-if="table.fail > 0">失败: {{ table.fail }}</el-tag>
+          <el-tag type="warning" size="small" v-if="table.skip > 0">跳过: {{ table.skip }}</el-tag>
+        </div>
+        <el-table v-if="table.errors && table.errors.length > 0" :data="table.errors" border size="small" max-height="200">
+          <el-table-column prop="id" label="记录ID" width="140" show-overflow-tooltip />
+          <el-table-column prop="error" label="错误原因" show-overflow-tooltip />
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="showSyncResultDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, h, computed, onMounted, onUnmounted, watch } from 'vue'
-import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, toggleLocalMode, restoreSession } from './store.js'
+import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout, syncAllFromSupabase, syncLocalToCloud, checkSupabasePermissions, toggleLocalMode, restoreSession, persistData } from './store.js'
 import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig, syncToSupabase, fetchFromSupabase } from './supabase.js'
 import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -497,7 +525,12 @@ const syncableTables = [
   { name: 'sales_orders', label: '订单总台账' },
   { name: 'customer_groups', label: '客户分组配置' },
   { name: 'delivery_allocations', label: '出货分配台账' },
-  { name: 'delivery_schedules', label: '订单交期管控台账' }
+  { name: 'delivery_schedules', label: '订单交期管控台账' },
+  { name: 'activate_export_configs', label: '激活数据导出配置' },
+  { name: 'cert_matrix_files', label: '认证文件矩阵-文件项' },
+  { name: 'cert_matrix_cells', label: '认证文件矩阵-进度' },
+  { name: 'cert_matrix_templates', label: '认证矩阵-自定义模板' },
+  { name: 'cert_matrix_statuses', label: '认证矩阵-自定义状态' }
 ]
 
 const showSyncDialog = ref(false)
@@ -505,6 +538,8 @@ const syncDirection = ref('pull')
 const selectedTables = ref([])
 const selectAllTables = ref(false)
 const syncLoading = ref(false)
+const showSyncResultDialog = ref(false)
+const syncResultDetails = ref([])
 
 function openSyncDialog(direction) {
   syncDirection.value = direction
@@ -520,57 +555,79 @@ function handleSelectAllTables(val) {
 async function executeSync() {
   syncLoading.value = true
   const tables = selectedTables.value
+  syncResultDetails.value = []
   
   try {
     ElMessage.info(`开始${syncDirection.value === 'push' ? '推送' : '拉取'} ${tables.length} 张表...`)
     
     for (const tableName of tables) {
       const tableLabel = syncableTables.find(t => t.name === tableName)?.label || tableName
+      const tableResult = { tableName, label: tableLabel, success: 0, fail: 0, skip: 0, errors: [] }
       
       if (syncDirection.value === 'pull') {
-        const result = await fetchFromSupabase(tableName, { page: 1, pageSize: 50 })
-        if (result.success) {
-          for (const item of result.data) {
-            await saveLocalData(tableName, item)
+        try {
+          const result = await fetchFromSupabase(tableName, { page: 1, pageSize: 50 })
+          if (result.success) {
+            for (const item of result.data) {
+              await saveLocalData(tableName, item)
+            }
+            tableResult.success = result.data.length
+          } else {
+            tableResult.errors.push({ id: '-', error: result.error || '拉取失败' })
           }
-          ElMessage.success(`${tableLabel}: 拉取 ${result.data.length} 条记录`)
-        } else {
-          ElMessage.error(`${tableLabel}: ${result.error}`)
+        } catch (e) {
+          tableResult.errors.push({ id: '-', error: e.message || '未知错误' })
         }
       } else {
-        const localData = await getLocalData(tableName)
-        if (localData.length === 0) {
-          ElMessage.warning(`${tableLabel}: 本地无数据可推送`)
-          continue
-        }
-        
-        let successCount = 0
-        let failCount = 0
-        for (const item of localData) {
-          let pushData = { ...item }
-          if (pushData.id) {
-            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            if (!uuidPattern.test(pushData.id)) {
-              delete pushData.id
+        try {
+          const localData = await getLocalData(tableName)
+          if (localData.length === 0) {
+            tableResult.skip = 0
+            continue
+          }
+          
+          for (const item of localData) {
+            let pushData = { ...item }
+            let recordId = pushData.id || '(无ID)'
+            if (pushData.id) {
+              const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+              if (!uuidPattern.test(pushData.id)) {
+                delete pushData.id
+              }
+            }
+            const result = await syncToSupabase(tableName, pushData)
+            if (result.success) {
+              tableResult.success++
+              // 自增ID表：insert 成功后用数据库返回的 id 更新本地记录，避免重复推送
+              if (result.id && item.id && String(item.id) !== String(result.id)) {
+                console.log(`[同步] 更新本地记录 id: ${item.id} → ${result.id}`)
+                item.id = result.id
+              }
+            } else {
+              tableResult.fail++
+              tableResult.errors.push({ id: recordId, error: result.error || '推送失败' })
             }
           }
-          const result = await syncToSupabase(tableName, pushData)
-          if (result.success) {
-            successCount++
-          } else {
-            failCount++
-          }
+        } catch (e) {
+          tableResult.errors.push({ id: '-', error: e.message || '未知错误' })
         }
-        if (failCount === 0) {
-          ElMessage.success(`${tableLabel}: 推送 ${successCount} 条记录`)
-        } else {
-          ElMessage.warning(`${tableLabel}: 推送 ${successCount} 条成功，${failCount} 条失败`)
-        }
+      }
+      if (tableResult.success || tableResult.fail || tableResult.errors.length) {
+        syncResultDetails.value.push(tableResult)
       }
     }
     
-    ElMessage.success('同步完成！')
     showSyncDialog.value = false
+    
+    // 推送完成后持久化本地数据（更新了自增ID表返回的数据库id）
+    persistData()
+    
+    const hasErrors = syncResultDetails.value.some(t => t.fail > 0 || t.errors.length > 0)
+    if (hasErrors) {
+      showSyncResultDialog.value = true
+    } else {
+      ElMessage.success('同步完成！全部成功')
+    }
   } catch (err) {
     ElMessage.error(`同步失败: ${err.message}`)
   } finally {
@@ -591,9 +648,14 @@ async function saveLocalData(tableName, data) {
     'sales_orders': () => store.salesOrders,
     'customer_groups': () => store.customerGroups,
     'delivery_allocations': () => store.deliveryAllocations,
-    'delivery_schedules': () => store.deliverySchedules
+    'delivery_schedules': () => store.deliverySchedules,
+    'activate_export_configs': () => store.activateExportConfigs,
+    'cert_matrix_files': () => store.certMatrixFiles,
+    'cert_matrix_cells': () => store.certMatrixCells,
+    'cert_matrix_templates': () => store.certMatrixTemplates,
+    'cert_matrix_statuses': () => store.certMatrixStatuses
   }
-  
+
   const getter = TABLE_STORE_MAP[tableName]
   if (getter) {
     const list = getter()
@@ -632,9 +694,14 @@ async function getLocalData(tableName) {
     'sales_orders': () => store.salesOrders,
     'customer_groups': () => store.customerGroups.map(g => typeof g === 'string' ? { group_name: g } : g),
     'delivery_allocations': () => store.deliveryAllocations || [],
-    'delivery_schedules': () => store.deliverySchedules || []
+    'delivery_schedules': () => store.deliverySchedules || [],
+    'activate_export_configs': () => store.activateExportConfigs || [],
+    'cert_matrix_files': () => store.certMatrixFiles || [],
+    'cert_matrix_cells': () => store.certMatrixCells || [],
+    'cert_matrix_templates': () => store.certMatrixTemplates || [],
+    'cert_matrix_statuses': () => store.certMatrixStatuses || []
   }
-  
+
   const getter = TABLE_STORE_MAP[tableName]
   if (getter) {
     const data = getter()
@@ -880,7 +947,9 @@ const salesNavGroups = [
       { key: 'order', subKey: 'bill', label: '物流费用对账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('line', { x1: '12', y1: '1', x2: '12', y2: '23' }), h('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })) },
       { key: 'order', subKey: 'imei', label: 'IMEI出库核对', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('line', { x1: '9', y1: '9', x2: '15', y2: '9' }), h('line', { x1: '9', y1: '15', x2: '15', y2: '15' })) },
       { key: 'delivery-allocation', subKey: '', label: '出货分配台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('rect', { x: '1', y: '3', width: '15', height: '13' }), h('polygon', { points: '16 8 20 8 23 11 23 16 16 16 16 8' }), h('circle', { cx: '5.5', cy: '18.5', r: '2.5' }), h('circle', { cx: '18.5', cy: '18.5', r: '2.5' })) },
-      { key: 'delivery-schedule', subKey: '', label: '订单交期管控台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('circle', { cx: '12', cy: '12', r: '10' }), h('polyline', { points: '12 6 12 12 16 14' })) }
+      { key: 'delivery-schedule', subKey: '', label: '订单交期管控台账', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('circle', { cx: '12', cy: '12', r: '10' }), h('polyline', { points: '12 6 12 12 16 14' })) },
+      { key: 'order', subKey: 'activate', label: '激活数据导出配置', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }), h('polyline', { points: '7 10 12 15 17 10' }), h('line', { x1: '12', y1: '15', x2: '12', y2: '3' })) },
+      { key: 'dailywork', subKey: 'reminder', label: '每日待办清单', icon: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', 'stroke': 'currentColor', 'stroke-width': '2', width: '18', height: '18' }, h('path', { d: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' }), h('path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' })) }
     ]
   },
   {
@@ -1046,6 +1115,22 @@ function confirmAddTask() {
 
 function handleLoginSuccess() {
   currentPage.value = 'workbench'
+  // 登录后自动检测权限
+  setTimeout(async () => {
+    try {
+      const permCheck = await checkSupabasePermissions()
+      if (permCheck.ok && store.localMode) {
+        // 权限正常，自动切回云端模式
+        toggleLocalMode(false)
+        setLocalMode(false)
+        localStorage.removeItem('supabase_rls_failed')
+        await syncAllFromSupabase(false)
+        ElMessage.success('✅ 云端权限已修复，已自动切换为云端模式')
+      }
+    } catch (e) {
+      console.warn('[启动] 权限检测失败：', e)
+    }
+  }, 500)
 }
 
 async function handleLocalModeChange(enabled) {
@@ -1136,6 +1221,33 @@ function handleCancelSupabaseConfig() {
   showSupabaseConfigDialog.value = false
   toggleLocalMode(true)
   setLocalMode(true)
+}
+
+function openSupabaseConfig() {
+  showSupabaseConfigDialog.value = true
+}
+
+async function syncLocalNow() {
+  try {
+    ElMessageBox.confirm(
+      '将本地所有数据同步到云端，同步完成后将自动切换为云端模式。\n\n确认执行？',
+      '一键同步云端',
+      { confirmButtonText: '开始同步', cancelButtonText: '取消', type: 'warning' }
+    )
+    const result = await syncLocalToCloud(true)
+    if (result.switchedToCloud) {
+      ElMessage.success(`同步成功！${result.uploaded} 条数据已上传，已切换为云端模式`)
+    } else {
+      ElMessage.info(`同步完成：成功 ${result.uploaded} 条，失败 ${result.failed} 条`)
+      if (result.failed > 0 && result.failures.length > 0) {
+        console.warn('同步失败详情:', result.failures)
+      }
+    }
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('同步失败：' + (e.message || '未知错误'))
+    }
+  }
 }
 
 function handleLogout() {
@@ -1417,6 +1529,36 @@ html, body, #app {
 
 .sync-table-list .el-checkbox {
   margin-right: 0;
+}
+
+.local-mode-warning {
+  background: #fdf6ec;
+  border-bottom: 1px solid #faecd8;
+  padding: 8px 16px;
+  animation: slideDown 0.3s ease;
+}
+
+.warning-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.warning-icon {
+  font-size: 18px;
+}
+
+.warning-text {
+  color: #e6a23c;
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .main-content {

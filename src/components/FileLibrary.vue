@@ -4,6 +4,8 @@
       <h2>文件资料管理</h2>
       <div class="header-actions">
         <el-input v-model="searchKeyword" placeholder="搜索文件名/运单号" clearable size="small" style="width: 200px" />
+        <el-button size="small" @click="handleExportTemplate">导出模板</el-button>
+        <el-button size="small" type="success" @click="openBatchImportDialog">批量导入</el-button>
         <el-button type="primary" @click="showUploadDialog = true">上传文件</el-button>
       </div>
     </div>
@@ -94,6 +96,7 @@
               <span v-if="file.expiryDate" class="file-expiry" :class="getExpiryClass(file.expiryDate)">
                 到期: {{ file.expiryDate }}
               </span>
+              <span v-if="file.remark" class="file-remark" :title="file.remark">{{ file.remark }}</span>
             </div>
             <input type="checkbox" v-model="selectedFiles" :value="file.id" class="file-checkbox" />
           </div>
@@ -156,12 +159,65 @@
         </div>
       </div>
     </el-dialog>
+
+    <el-dialog v-model="showBatchImportDialog" title="批量导入文件项" width="860px" top="5vh">
+      <div class="batch-import-body">
+        <div class="batch-import-tips">
+          <span>请先点击「导出模板」下载模板，按格式填写后上传。仅导入文件元数据（文件名/文件夹/到期日等），实际文件可后续上传补充。</span>
+        </div>
+        <el-upload
+          ref="batchUploadRef"
+          :auto-upload="false"
+          :on-change="handleBatchFileChange"
+          :on-remove="handleBatchFileRemove"
+          :file-list="batchFileList"
+          :limit="1"
+          accept=".xls,.xlsx"
+          action=""
+          drag
+        >
+          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <div class="el-upload__text">将 Excel 文件拖到此处，或<em>点击选择</em></div>
+          <template #tip>
+            <div class="el-upload__tip">仅支持 .xls / .xlsx，表头须在第2行，数据从第3行开始</div>
+          </template>
+        </el-upload>
+
+        <div v-if="batchImportResult" class="batch-import-summary">
+          <el-tag type="success">有效 {{ batchImportResult.data.length }} 条</el-tag>
+          <el-tag v-if="batchImportResult.errors.length" type="danger">无效 {{ batchImportResult.errors.length }} 条</el-tag>
+          <el-tag type="info">共解析 {{ batchImportResult.totalRows }} 行</el-tag>
+        </div>
+
+        <el-table v-if="batchImportResult && batchImportResult.data.length" :data="batchImportResult.data" max-height="360" size="small" border style="margin-top: 10px">
+          <el-table-column type="index" label="#" width="44" />
+          <el-table-column prop="name" label="文件名" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="folderPath" label="目标文件夹" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="type" label="类型" width="80" />
+          <el-table-column prop="expiryDate" label="到期时间" width="110" />
+          <el-table-column prop="logisticsNo" label="运单号" width="120" show-overflow-tooltip />
+          <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+        </el-table>
+
+        <div v-if="batchImportResult && batchImportResult.errors.length" class="batch-import-errors">
+          <div v-for="(err, i) in batchImportResult.errors" :key="i" class="error-line">第 {{ err.row }} 行：{{ err.error }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="cancelBatchImport">取消</el-button>
+        <el-button type="primary" @click="confirmBatchImport" :disabled="!batchImportResult || batchImportResult.data.length === 0">确认导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 import { store, addFileToLibrary, deleteFileFromLibrary, generateId } from '../store.js'
+import { importFromExcel } from '../utils/excelImport.js'
+import { exportImportTemplate } from '../utils/excelExport.js'
 
 const searchKeyword = ref('')
 const currentFolder = ref('')
@@ -454,6 +510,142 @@ function getExpiryClass(expiryDate) {
   if (diffDays <= 30) return 'expiry-warning'
   return ''
 }
+
+// ========== 批量导入文件项 ==========
+const batchUploadRef = ref(null)
+const showBatchImportDialog = ref(false)
+const batchFileList = ref([])
+const batchImportResult = ref(null)
+
+// 文件项字段映射（与导出模板列保持一致）
+const fileFieldMapping = [
+  { excelHeader: '文件名', dataField: 'name' },
+  { excelHeader: '目标文件夹', dataField: 'folderPath' },
+  { excelHeader: '文件类型', dataField: 'type' },
+  { excelHeader: '证书到期时间', dataField: 'expiryDate' },
+  { excelHeader: '运单号', dataField: 'logisticsNo' },
+  { excelHeader: '备注', dataField: 'remark' }
+]
+
+// 导出模板
+async function handleExportTemplate() {
+  const columns = [
+    { header: '文件名', field: 'name', width: 24, sample: 'CE证书.pdf' },
+    { header: '目标文件夹', field: 'folderPath', width: 24, sample: '合规认证 / CE' },
+    { header: '文件类型', field: 'type', width: 12, sample: 'pdf' },
+    { header: '证书到期时间', field: 'expiryDate', width: 16, sample: '2026-12-31' },
+    { header: '运单号', field: 'logisticsNo', width: 16, sample: '' },
+    { header: '备注', field: 'remark', width: 20, sample: '客户A的CE认证' }
+  ]
+  const description = '说明：1) 目标文件夹请填写完整路径，如「合规认证 / CE」「客户资料 / 客户A」「物流单据」等；2) 文件类型可选 image/pdf/excel/document/other，留空将按文件名自动识别；3) 数据从第3行开始填写。'
+  try {
+    await exportImportTemplate('文件资料', columns, { includeSample: true, description })
+    ElMessage.success('模板已下载')
+  } catch (e) {
+    ElMessage.error('模板导出失败：' + e.message)
+  }
+}
+
+function openBatchImportDialog() {
+  batchFileList.value = []
+  batchImportResult.value = null
+  showBatchImportDialog.value = true
+}
+
+async function handleBatchFileChange(file, fileList) {
+  batchFileList.value = fileList.slice(-1)
+  if (!file.raw) return
+  await parseBatchImportFile(file.raw)
+}
+
+function handleBatchFileRemove(file, fileList) {
+  batchFileList.value = fileList
+  batchImportResult.value = null
+}
+
+async function parseBatchImportFile(rawFile) {
+  const result = await importFromExcel(rawFile, {
+    fieldMapping: fileFieldMapping,
+    headerRow: 2,
+    startRow: 3,
+    validateRow: (rowData) => {
+      if (!rowData.name) {
+        return { valid: false, error: '文件名不能为空' }
+      }
+      return { valid: true }
+    },
+    transformRow: (rowData) => {
+      // 文件夹路径 → 文件夹 id
+      let folderPath = (rowData.folderPath || '').trim()
+      let folderId = ''
+      if (folderPath) {
+        const match = allFolders.value.find(f => f.fullPath === folderPath || f.fullPath.replace(/\s*\/\s*/g, '/') === folderPath.replace(/\s*\/\s*/g, '/'))
+        if (match) {
+          folderId = match.id
+        }
+      }
+      rowData.folderPath = folderPath || '（未指定）'
+      rowData.path = folderId
+
+      // 文件类型自动识别
+      if (!rowData.type) {
+        rowData.type = getFileType(rowData.name)
+      }
+
+      // 到期日期格式化
+      if (rowData.expiryDate instanceof Date) {
+        rowData.expiryDate = rowData.expiryDate.toISOString().split('T')[0]
+      } else if (rowData.expiryDate) {
+        rowData.expiryDate = String(rowData.expiryDate).trim()
+      }
+
+      return rowData
+    }
+  })
+
+  if (!result.success) {
+    ElMessage.warning(result.message || '解析失败')
+    batchImportResult.value = null
+    return
+  }
+
+  batchImportResult.value = {
+    data: result.data,
+    errors: result.errors || [],
+    totalRows: result.totalRows
+  }
+}
+
+function confirmBatchImport() {
+  if (!batchImportResult.value || batchImportResult.value.data.length === 0) return
+  const list = batchImportResult.value.data
+  let imported = 0
+  list.forEach(item => {
+    addFileToLibrary({
+      id: generateId('f'),
+      name: item.name,
+      path: item.path || '',
+      type: item.type || 'other',
+      size: 0,
+      expiryDate: item.expiryDate || '',
+      logisticsNo: item.logisticsNo || '',
+      remark: item.remark || '',
+      data: '',
+      uploadDate: new Date().toISOString().split('T')[0]
+    })
+    imported++
+  })
+  ElMessage.success(`已批量导入 ${imported} 个文件项`)
+  showBatchImportDialog.value = false
+  batchFileList.value = []
+  batchImportResult.value = null
+}
+
+function cancelBatchImport() {
+  showBatchImportDialog.value = false
+  batchFileList.value = []
+  batchImportResult.value = null
+}
 </script>
 
 <style>
@@ -650,6 +842,16 @@ function getExpiryClass(expiryDate) {
   margin-top: 4px;
 }
 
+.file-remark {
+  display: block;
+  font-size: 11px;
+  color: #909399;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .expiry-warning {
   color: #E6A23C;
 }
@@ -715,5 +917,42 @@ function getExpiryClass(expiryDate) {
   .file-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
+}
+
+.batch-import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.batch-import-tips {
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #409EFF;
+  line-height: 1.6;
+}
+
+.batch-import-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.batch-import-errors {
+  max-height: 120px;
+  overflow-y: auto;
+  background: #fef0f0;
+  border: 1px solid #fde2e2;
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+
+.batch-import-errors .error-line {
+  font-size: 12px;
+  color: #F56C6C;
+  line-height: 1.8;
 }
 </style>
