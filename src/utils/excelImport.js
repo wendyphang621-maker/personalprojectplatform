@@ -184,20 +184,34 @@ export function createImportPreview(data, fieldMapping) {
  * 各模块可根据需要使用这些预设
  */
 export const fieldMappingPresets = {
-  // 客户主台账
+  // 客户主台账（支持中英文表头）
   customers: [
     { excelHeader: '客户ID', dataField: 'id' },
+    { excelHeader: 'id', dataField: 'id' },
+    { excelHeader: 'ID', dataField: 'id' },
     { excelHeader: '客户姓名', dataField: 'name' },
+    { excelHeader: 'name', dataField: 'name' },
     { excelHeader: '客户分组', dataField: 'group' },
+    { excelHeader: 'group', dataField: 'group' },
     { excelHeader: '国家', dataField: 'country' },
+    { excelHeader: 'country', dataField: 'country' },
     { excelHeader: '地区', dataField: 'region' },
+    { excelHeader: 'region', dataField: 'region' },
     { excelHeader: '公司', dataField: 'company' },
+    { excelHeader: 'company', dataField: 'company' },
     { excelHeader: '海外邮箱', dataField: 'email' },
+    { excelHeader: 'email', dataField: 'email' },
     { excelHeader: '电话', dataField: 'phone' },
+    { excelHeader: 'phone', dataField: 'phone' },
+    { excelHeader: '地址', dataField: 'address' },
+    { excelHeader: 'address', dataField: 'address' },
     { excelHeader: '对接机型', dataField: 'model' },
+    { excelHeader: 'model', dataField: 'model' },
     { excelHeader: '首次联系日期', dataField: 'firstContactDate' },
-    { excelHeader: '本地产品素材路径', dataField: 'localMaterialPath' },
-    { excelHeader: '备注', dataField: 'remark' }
+    { excelHeader: 'firstContactDate', dataField: 'firstContactDate' },
+    { excelHeader: 'localMaterialPath', dataField: 'localMaterialPath' },
+    { excelHeader: '备注', dataField: 'remark' },
+    { excelHeader: 'remark', dataField: 'remark' }
   ],
 
   // 样机寄样申请

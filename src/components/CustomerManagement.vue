@@ -657,7 +657,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId } from '../store.js'
+import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId, saveToLocalStorage } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
@@ -1422,17 +1422,38 @@ async function handleCustomerImport(event) {
       cancelButtonText: '取消',
       type: 'info'
     }
-  ).then(() => {
+  ).then(async () => {
+    // 收集现有 ID 用于生成唯一短编号
+    const existingIds = new Set(store.customers.map(c => c.id))
+    let idCounter = 0
+    store.customers.forEach(c => {
+      const match = (c.id || '').match(/^CUST-(\d{4})$/)
+      if (match) idCounter = Math.max(idCounter, parseInt(match[1]))
+    })
+
     // 导入数据
+    let importedCount = 0
     result.data.forEach(customer => {
-      const idx = store.customers.findIndex(c => c.id === customer.id)
+      // 生成短编号 ID
+      let id = customer.id
+      if (!id || !/^CUST-\d{4}$/.test(id)) {
+        idCounter++
+        id = `CUST-${String(idCounter).padStart(4, '0')}`
+        while (existingIds.has(id)) {
+          idCounter++
+          id = `CUST-${String(idCounter).padStart(4, '0')}`
+        }
+        existingIds.add(id)
+      }
+
+      const idx = store.customers.findIndex(c => c.id === id)
       if (idx > -1) {
         // 更新现有客户
-        store.customers[idx] = { ...store.customers[idx], ...customer }
+        store.customers[idx] = { ...store.customers[idx], ...customer, id }
       } else {
         // 添加新客户
         store.customers.push({
-          id: customer.id || `c${Date.now()}`,
+          id,
           name: customer.name || '',
           group: customer.group || '',
           country: customer.country || '',
@@ -1440,6 +1461,7 @@ async function handleCustomerImport(event) {
           company: customer.company || '',
           email: customer.email || '',
           phone: customer.phone || '',
+          address: customer.address || '',
           model: customer.model || '',
           firstContactDate: customer.firstContactDate || '',
           localMaterialPath: '',
@@ -1447,8 +1469,12 @@ async function handleCustomerImport(event) {
           remark: customer.remark || ''
         })
       }
+      importedCount++
     })
-    ElMessage.success(`成功导入 ${result.data.length} 条客户数据`)
+
+    // 保存到本地
+    saveToLocalStorage()
+    ElMessage.success(`成功导入 ${importedCount} 条客户数据`)
   }).catch(() => {})
 }
 
