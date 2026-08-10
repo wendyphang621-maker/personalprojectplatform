@@ -387,7 +387,7 @@
           <el-input v-model="billForm.freightForwarder" />
         </el-form-item>
         <el-form-item label="运费金额">
-          <el-input v-model="billForm.amount" />
+          <el-input v-model="billForm.freightAmount" />
         </el-form-item>
         <el-form-item label="付款状态">
           <el-select v-model="billForm.status">
@@ -579,7 +579,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 import { exportToExcel } from '../utils/excelExport.js'
-import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
 import ActivateConfigManager from './ActivateConfigManager.vue'
 
 const props = defineProps({
@@ -674,7 +674,7 @@ const billForm = reactive({
   customerName: '',
   country: '',
   freightForwarder: '',
-  amount: '',
+  freightAmount: '',
   status: 'unpaid',
   verificationDate: ''
 })
@@ -956,7 +956,7 @@ function handleAddBill() {
     customerName: '',
     country: '',
     freightForwarder: '',
-    amount: '',
+    freightAmount: '',
     status: 'unpaid',
     verificationDate: ''
   })
@@ -983,7 +983,7 @@ function handleDeleteBill(row) {
 }
 
 function confirmBill() {
-  if (!billForm.logisticsNo || !billForm.amount) {
+  if (!billForm.logisticsNo || !billForm.freightAmount) {
     alert('请填写运单号和金额')
     return
   }
@@ -1056,8 +1056,8 @@ function showBillPreview() {
     country: b.country || '-',
     freightForwarder: b.freightForwarder || '-',
     freightAmount: b.freightAmount,
-    paymentStatus: b.paymentStatus,
-    writeOffDate: b.writeOffDate || ''
+    paymentStatus: b.status,
+    writeOffDate: b.verificationDate || b.writeOffDate || ''
   }))
   showBillPreviewDialog.value = true
 }
@@ -1271,7 +1271,7 @@ function exportBills() {
   const headers = ['对账ID', '关联运单号', '客户姓名', '国家', '货代公司', '运费金额', '付款状态', '核销日期']
   const data = filteredBills.value.map(b => [
     b.id, b.logisticsNo, b.customerName, b.country || '', b.freightForwarder || '', 
-    b.amount, getPaymentStatusLabel(b.status), b.verificationDate || ''
+    b.freightAmount, getPaymentStatusLabel(b.status), b.verificationDate || ''
   ])
   exportToExcel('物流对账', headers, data)
 }
@@ -1283,54 +1283,32 @@ function triggerOrderImport() {
 async function handleOrderImport(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  
   try {
-    const result = await importFromExcel(file, {
+    await importAndSync({
+      file,
       fieldMapping: fieldMappingPresets.orders,
-      validateRow: (row) => {
-        if (!row.customerId && !row.customerName) {
-          return { valid: false, error: '缺少客户信息' }
-        }
-        if (!row.model) {
-          return { valid: false, error: '缺少机型信息' }
-        }
-        return { valid: true }
-      }
+      tableName: 'sales_orders',
+      storeData: store.salesOrders,
+      transformFn: (row) => ({
+        id: row.id || generateOrderNumber(),
+        customerId: row.customerId || '',
+        customerName: row.customerName || '',
+        model: row.model || '',
+        qty: row.qty || 1,
+        bookingDate: row.bookingDate || new Date().toISOString().split('T')[0],
+        logisticsNo: row.logisticsNo || '',
+        status: row.status || 'pending',
+        amount: row.amount || 0,
+        currency: row.currency || 'USD',
+        bulkFreight: row.bulkFreight || 0,
+        orderType: row.orderType || 'bulk_order',
+        balanceSettled: row.balanceSettled || false
+      }),
+      confirmText: `检测到订单数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-    
-    if (result.success && result.data.length > 0) {
-      let importedCount = 0
-      result.data.forEach(row => {
-        try {
-          const orderData = {
-            id: row.id || generateOrderNumber(),
-            customerId: row.customerId || '',
-            customerName: row.customerName || '',
-            model: row.model || '',
-            qty: row.qty || 1,
-            bookingDate: row.bookingDate || new Date().toISOString().split('T')[0],
-            logisticsNo: row.logisticsNo || '',
-            status: row.status || 'pending',
-            amount: row.amount || 0,
-            currency: row.currency || 'USD',
-            bulkFreight: row.bulkFreight || 0,
-            orderType: row.orderType || 'bulk_order',
-            balanceSettled: row.balanceSettled || false
-          }
-          addSalesOrder(orderData)
-          importedCount++
-        } catch (e) {
-          console.error('导入订单失败:', e)
-        }
-      })
-      ElMessage.success(`成功导入 ${importedCount} 条订单`)
-    }
-    
-    showImportResult(result)
   } catch (error) {
     ElMessage.error('导入失败: ' + error.message)
   }
-  
   event.target.value = ''
 }
 
@@ -1341,50 +1319,29 @@ function triggerLogisticsImport() {
 async function handleLogisticsImport(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  
   try {
-    const result = await importFromExcel(file, {
+    await importAndSync({
+      file,
       fieldMapping: fieldMappingPresets.logistics,
-      validateRow: (row) => {
-        if (!row.logisticsNo) {
-          return { valid: false, error: '缺少运单号' }
-        }
-        return { valid: true }
-      }
+      tableName: 'sample_deliveries',
+      storeData: store.sampleDeliveries,
+      transformFn: (row) => ({
+        id: row.id || `LOG${Date.now()}`,
+        customerName: row.customerName || '',
+        model: row.model || '',
+        logisticsNo: row.trackingNo || row.logisticsNo || '',
+        sendDate: row.sendDate || new Date().toISOString().split('T')[0],
+        status: row.status || 'pending',
+        trackingInfo: row.trackingInfo || '',
+        sampleQty: row.sampleQty || 0,
+        freightAmount: row.freightAmount || 0,
+        settled: row.settled || false
+      }),
+      confirmText: `检测到物流数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-    
-    if (result.success && result.data.length > 0) {
-      let importedCount = 0
-      result.data.forEach(row => {
-        try {
-          const logisticsData = {
-            id: row.id || Date.now().toString() + '_' + importedCount,
-            customerId: row.customerId || '',
-            customerName: row.customerName || '',
-            logisticsNo: row.logisticsNo || '',
-            sendDate: row.sendDate || new Date().toISOString().split('T')[0],
-            expectedSignDate: row.expectedSignDate || '',
-            status: row.status || 'pending',
-            trackingInfo: row.trackingInfo || '',
-            model: row.model || '',
-            sampleQty: row.sampleQty || 0,
-            freightAmount: row.freightAmount || 0,
-            settled: row.settled || false
-          }
-          store.sampleDeliveries.unshift(logisticsData)
-          importedCount++
-        } catch (e) {
-          console.error('导入运单失败:', e)
-        }
-      })
-      ElMessage.success(`成功导入 ${importedCount} 条运单`)
-    }
-    
-    showImportResult(result)
   } catch (error) {
     ElMessage.error('导入失败: ' + error.message)
   }
-  
   event.target.value = ''
 }
 
@@ -1406,41 +1363,41 @@ async function handleBillImport(event) {
   if (!file) return
   event.target.value = ''
 
-  const result = await importFromExcel(file, {
-    fieldMapping: fieldMappingPresets.logisticsBills,
-    headerRow: 2,
-    startRow: 3
-  })
-
-  if (!result.success) {
-    ElMessage.error(result.message || '导入失败')
-    return
-  }
-
-  ElMessageBox.confirm(
-    `检测到 ${result.data.length} 条费用对账数据，是否导入？`,
-    '确认导入',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
-  ).then(() => {
-    result.data.forEach(bill => {
-      const idx = store.logisticsBills.findIndex(b => b.id === bill.id)
-      if (idx > -1) {
-        store.logisticsBills[idx] = { ...store.logisticsBills[idx], ...bill }
-      } else {
-        store.logisticsBills.push({
-          id: bill.id || `lb${Date.now()}`,
+  try {
+    await importAndSync({
+      file,
+      fieldMapping: fieldMappingPresets.logisticsBills,
+      tableName: 'logistics_bills',
+      storeData: store.logisticsBills,
+      headerRow: 3,
+      startRow: 4,
+      transformFn: (bill) => {
+        // 运费兼容文本数字：字符串 "1" / "532" 转为数字
+        let freightVal = bill.freightAmount
+        if (freightVal !== undefined && freightVal !== null && freightVal !== '') {
+          const num = Number(String(freightVal).replace(/[^0-9.\-]/g, ''))
+          freightVal = isNaN(num) ? freightVal : num
+        } else {
+          freightVal = bill.amount || ''
+        }
+        // 空行检测：关键字段全空则跳过
+        if (!bill.logisticsNo && !bill.customerName && !bill.country) return null
+        return {
+          id: bill.id || `lb${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
           logisticsNo: bill.logisticsNo || '',
           customerName: bill.customerName || '',
           country: bill.country || '',
           freightForwarder: bill.freightForwarder || '',
-          amount: bill.amount || 0,
-          status: bill.status || 'unpaid',
-          verificationDate: bill.verificationDate || ''
-        })
-      }
+          freightAmount: freightVal,
+          status: bill.status || bill.paymentStatus || 'unpaid',
+          verificationDate: bill.verificationDate || bill.writeOffDate || ''
+        }
+      },
+      confirmText: `检测到费用对账数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-    ElMessage.success(`成功导入 ${result.data.length} 条费用对账数据`)
-  }).catch(() => {})
+  } catch (error) {
+    ElMessage.error('导入失败: ' + error.message)
+  }
 }
 
 watch(() => store.salesOrders, () => {}, { deep: true })

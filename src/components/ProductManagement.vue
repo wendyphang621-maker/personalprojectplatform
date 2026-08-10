@@ -707,7 +707,7 @@ import CertMatrixManager from './CertMatrixManager.vue'
 import ModelFileOverview from './ModelFileOverview.vue'
 import { store, addProductModel, updateProductModel, updateProductModelId, deleteProductModel, addCertRecord, updateCertRecord, deleteCertRecord, addSupplier, updateSupplier, deleteSupplier, syncAllFromSupabase, addActivateExportConfig, updateActivateExportConfig, deleteActivateExportConfig, addDailyReminder, canBatchDelete, canEditActivateConfig } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
 import { getAllCachedMaterials, addMaterialsToCache, deleteMaterialFromCache, batchDeleteMaterialsFromCache, clearAllCache, getCacheRootFolder, getCacheCount, validateAndCleanCache } from '../utils/materialCache.js'
 
 const props = defineProps({
@@ -2521,39 +2521,24 @@ function triggerModelImport() {
 async function handleModelImport(event) {
   const file = event.target.files[0]
   if (!file) return
-
   try {
-    const result = await importFromExcel(file, {
+    await importAndSync({
+      file,
       fieldMapping: fieldMappingPresets.productModels,
-      transformRow: (rowData) => {
-        // 处理 certifications 字段，将逗号分隔的字符串转为数组
-        if (rowData.certifications && typeof rowData.certifications === 'string') {
-          rowData.certifications = rowData.certifications.split(',').map(c => c.trim()).filter(c => c)
+      tableName: 'product_models',
+      storeData: store.productModels,
+      transformFn: (item) => {
+        if (item.certifications && typeof item.certifications === 'string') {
+          item.certifications = item.certifications.split(',').map(c => c.trim()).filter(c => c)
         }
-        return rowData
-      }
+        if (!item.id) item.id = nextModelShortId()
+        return item
+      },
+      confirmText: `检测到机型数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-
-    showImportResult(result)
-
-    if (result.success && result.data) {
-      // 将导入的数据添加到 store
-      result.data.forEach(item => {
-        // 检查是否已存在相同 ID 的机型
-        const existingIndex = store.productModels.findIndex(m => m.id === item.id)
-        if (existingIndex > -1) {
-          // 更新现有机型
-          Object.assign(store.productModels[existingIndex], item)
-        } else {
-          // 添加新机型
-          addProductModel(item)
-        }
-      })
-    }
   } catch (error) {
     ElMessage.error(`导入失败: ${error.message}`)
   } finally {
-    // 清空文件输入
     event.target.value = ''
   }
 }
@@ -2566,32 +2551,21 @@ function triggerCertImport() {
 async function handleCertImport(event) {
   const file = event.target.files[0]
   if (!file) return
-
   try {
-    const result = await importFromExcel(file, {
-      fieldMapping: fieldMappingPresets.certRecords
+    await importAndSync({
+      file,
+      fieldMapping: fieldMappingPresets.certRecords,
+      tableName: 'cert_records',
+      storeData: store.certRecords,
+      transformFn: (item) => {
+        if (!item.id) item.id = `CR${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+        return item
+      },
+      confirmText: `检测到合规认证档案数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-
-    showImportResult(result)
-
-    if (result.success && result.data) {
-      // 将导入的数据添加到 store
-      result.data.forEach(item => {
-        // 检查是否已存在相同 ID 的认证
-        const existingIndex = store.certRecords.findIndex(c => c.id === item.id)
-        if (existingIndex > -1) {
-          // 更新现有认证
-          Object.assign(store.certRecords[existingIndex], item)
-        } else {
-          // 添加新认证
-          addCertRecord(item)
-        }
-      })
-    }
   } catch (error) {
     ElMessage.error(`导入失败: ${error.message}`)
   } finally {
-    // 清空文件输入
     event.target.value = ''
   }
 }
@@ -2604,39 +2578,24 @@ function triggerSupplierImport() {
 async function handleSupplierImport(event) {
   const file = event.target.files[0]
   if (!file) return
-
   try {
-    const result = await importFromExcel(file, {
+    await importAndSync({
+      file,
       fieldMapping: supplierFieldMapping,
-      transformRow: (rowData) => {
-        // 处理 models 字段，将逗号分隔的字符串转为数组
-        if (rowData.models && typeof rowData.models === 'string') {
-          rowData.models = rowData.models.split(',').map(m => m.trim()).filter(m => m)
+      tableName: 'suppliers',
+      storeData: store.suppliers,
+      transformFn: (item) => {
+        if (item.models && typeof item.models === 'string') {
+          item.models = item.models.split(',').map(m => m.trim()).filter(m => m)
         }
-        return rowData
-      }
+        if (!item.id) item.id = `SUP${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+        return item
+      },
+      confirmText: `检测到供应商数据，是否导入？\n注意：相同ID的记录将被覆盖`
     })
-
-    showImportResult(result)
-
-    if (result.success && result.data) {
-      // 将导入的数据添加到 store
-      result.data.forEach(item => {
-        // 检查是否已存在相同 ID 的供应商
-        const existingIndex = store.suppliers.findIndex(s => s.id === item.id)
-        if (existingIndex > -1) {
-          // 更新现有供应商
-          Object.assign(store.suppliers[existingIndex], item)
-        } else {
-          // 添加新供应商
-          addSupplier(item)
-        }
-      })
-    }
   } catch (error) {
     ElMessage.error(`导入失败: ${error.message}`)
   } finally {
-    // 清空文件输入
     event.target.value = ''
   }
 }

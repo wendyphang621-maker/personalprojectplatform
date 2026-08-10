@@ -661,11 +661,11 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId, saveToLocalStorage } from '../store.js'
+import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId, saveToLocalStorage, isValidPaymentId } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
-import { getFileUrlFromSupabase, deleteFileFromSupabase } from '../supabase.js'
+import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase } from '../supabase.js'
 import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -1141,7 +1141,7 @@ function previewCustomers() {
 
 async function confirmCustomer() {
   if (!customerForm.id.trim()) {
-    customerForm.id = generateId('C')
+    customerForm.id = generateId('c')
   }
   if (!isEditingCustomer.value) {
     const exists = store.customers.find(c => c.id === customerForm.id)
@@ -1336,25 +1336,85 @@ function handleDeletePayment(row) {
   }).catch(() => {})
 }
 
-function confirmPayment() {
+async function confirmPayment() {
   if (!paymentForm.customerId || !paymentForm.orderNo.trim()) {
     ElMessage.warning('请填写客户和订单编号')
     return
   }
+  // 主键生成规则统一：强制 generateId('cp') 输出 CPAY-xxxxxxxxxxxx
   if (!paymentForm.id.trim()) {
-    paymentForm.id = 'cp' + Date.now()
+    paymentForm.id = generateId('cp')
+  } else if (!isValidPaymentId(paymentForm.id)) {
+    // 非标准 CPAY- 前缀，拦截并重新生成
+    ElMessage.warning(`付款记录ID格式不规范（${paymentForm.id}），已自动重新生成`)
+    console.warn('[付款记录] 非标准ID已拦截:', paymentForm.id)
+    paymentForm.id = generateId('cp')
   }
+
+  // ===== 1) 本地写入 =====
   if (isEditingPayment.value) {
     const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
     if (idx > -1) {
       const { id, ...rest } = paymentForm
-      store.customerPayments[idx] = { id, ...rest }
+      store.customerPayments[idx] = { id, ...rest, _pendingSync: false }
     }
   } else {
     const { id, ...rest } = paymentForm
-    store.customerPayments.unshift({ id, ...rest })
+    store.customerPayments.unshift({ id, ...rest, _pendingSync: false })
   }
-  ElMessage.success(isEditingPayment.value ? '更新成功' : '新增成功')
+  saveToLocalStorage()
+
+  // ===== 2) 云端同步写入 =====
+  const client = await getSupabase()
+  const isLoggedIn = !store.localMode && client
+
+  if (!isLoggedIn) {
+    // 未登录：标记为待同步队列，不阻塞本地操作
+    const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
+    if (idx > -1) {
+      store.customerPayments[idx]._pendingSync = true
+      saveToLocalStorage()
+    }
+    ElMessage.warning('未登录云端，仅本地缓存。登录后可在【设置→Supabase配置】一键同步')
+    showPaymentDialog.value = false
+    return
+  }
+
+  try {
+    localStorage.removeItem('supabase_rls_failed')
+    const { id, ...rest } = paymentForm
+    const payload = { id, ...rest }
+    delete payload._pendingSync
+    const r = await syncToSupabase('customer_payments', payload)
+    if (r.success) {
+      // 同步成功：清除待同步标记
+      const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
+      if (idx > -1) {
+        store.customerPayments[idx]._pendingSync = false
+        saveToLocalStorage()
+      }
+      console.log(`[付款记录] CPAY-ID=${id} 同步成功，动作: ${isEditingPayment.value ? '覆盖' : '新增'}, 时间: ${new Date().toISOString()}`)
+      ElMessage.success(isEditingPayment.value ? '更新成功并已同步到云端' : '新增成功并已同步到云端')
+    } else {
+      // 云端写入失败：标记为待同步队列，不阻塞本地
+      const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
+      if (idx > -1) {
+        store.customerPayments[idx]._pendingSync = true
+        saveToLocalStorage()
+      }
+      const reason = r.error || r.rawError || '未知错误'
+      console.warn(`[付款记录] CPAY-ID=${paymentForm.id} 同步失败: ${reason}`)
+      ElMessage({ type: 'warning', duration: 6000, message: `本地已保存，云端同步失败（已加入待同步队列）：${reason}` })
+    }
+  } catch (e) {
+    const idx = store.customerPayments.findIndex(p => p.id === paymentForm.id)
+    if (idx > -1) {
+      store.customerPayments[idx]._pendingSync = true
+      saveToLocalStorage()
+    }
+    console.warn(`[付款记录] CPAY-ID=${paymentForm.id} 同步异常:`, e)
+    ElMessage({ type: 'warning', duration: 6000, message: `本地已保存，云端同步异常（已加入待同步队列）：${e.message || e}` })
+  }
   showPaymentDialog.value = false
 }
 
@@ -1427,36 +1487,25 @@ async function handleCustomerImport(event) {
       type: 'info'
     }
   ).then(async () => {
-    // 收集现有 ID 用于生成唯一短编号
-    const existingIds = new Set(store.customers.map(c => c.id))
-    let idCounter = 0
-    store.customers.forEach(c => {
-      const match = (c.id || '').match(/^CUST-(\d{4})$/)
-      if (match) idCounter = Math.max(idCounter, parseInt(match[1]))
-    })
-
     // 导入数据
     let importedCount = 0
+    const importedCustomers = []
     result.data.forEach(customer => {
-      // 生成短编号 ID
+      // 生成短编号 ID：如果已有 CUST-XXXX 格式则保留，否则用 generateId 生成
       let id = customer.id
       if (!id || !/^CUST-\d{4}$/.test(id)) {
-        idCounter++
-        id = `CUST-${String(idCounter).padStart(4, '0')}`
-        while (existingIds.has(id)) {
-          idCounter++
-          id = `CUST-${String(idCounter).padStart(4, '0')}`
-        }
-        existingIds.add(id)
+        id = generateId('c')
       }
 
       const idx = store.customers.findIndex(c => c.id === id)
+      let newCustomer
       if (idx > -1) {
         // 更新现有客户
-        store.customers[idx] = { ...store.customers[idx], ...customer, id }
+        newCustomer = { ...store.customers[idx], ...customer, id }
+        store.customers[idx] = newCustomer
       } else {
         // 添加新客户
-        store.customers.push({
+        newCustomer = {
           id,
           name: customer.name || '',
           group: customer.group || '',
@@ -1471,14 +1520,60 @@ async function handleCustomerImport(event) {
           localMaterialPath: '',
           attachments: [],
           remark: customer.remark || ''
-        })
+        }
+        store.customers.push(newCustomer)
       }
+      importedCustomers.push(newCustomer)
       importedCount++
     })
 
     // 保存到本地
     saveToLocalStorage()
-    ElMessage.success(`成功导入 ${importedCount} 条客户数据`)
+
+    // 同步到云端
+    if (!store.localMode) {
+      try {
+        // 清除旧的 RLS 失败标记，避免误判为离线模式而跳过同步
+        localStorage.removeItem('supabase_rls_failed')
+        const { syncToSupabase } = await import('../supabase.js')
+        let syncSuccess = 0
+        let syncFail = 0
+        const failReasons = []
+        for (const customer of importedCustomers) {
+          const r = await syncToSupabase('customers', customer)
+          if (r.success) {
+            syncSuccess++
+          } else {
+            syncFail++
+            // 收集失败原因（去重，最多 3 条），便于定位字段/权限问题
+            const reason = r.error || r.rawError || '未知错误'
+            if (failReasons.length < 3 && !failReasons.includes(reason)) {
+              failReasons.push(reason)
+            }
+          }
+        }
+        if (syncFail === 0) {
+          ElMessage.success(`成功导入 ${importedCount} 条客户数据并已同步到云端`)
+        } else {
+          const detail = failReasons.length > 0 ? `\n失败原因：${failReasons.join('；')}` : ''
+          ElMessage({
+            type: 'warning',
+            duration: 6000,
+            message: `导入成功 ${importedCount} 条，云端同步成功 ${syncSuccess} 条，失败 ${syncFail} 条${detail}`
+          })
+          console.warn('[客户导入] 同步失败明细:', failReasons)
+        }
+      } catch (e) {
+        console.error('云端同步失败:', e)
+        ElMessage({
+          type: 'warning',
+          duration: 6000,
+          message: `导入成功 ${importedCount} 条，但云端同步失败：${e.message || e}`
+        })
+      }
+    } else {
+      ElMessage.success(`成功导入 ${importedCount} 条客户数据（本地模式）`)
+    }
   }).catch(() => {})
 }
 
@@ -1508,13 +1603,16 @@ async function handleFollowupImport(event) {
     `检测到 ${result.data.length} 条跟进记录，是否导入？\n注意：相同ID的记录将被覆盖`,
     '确认导入',
     { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
-  ).then(() => {
+  ).then(async () => {
+    const importedFollowups = []
     result.data.forEach(followup => {
       const idx = store.customerFollowUps.findIndex(f => f.id === followup.id)
+      let rec
       if (idx > -1) {
-        store.customerFollowUps[idx] = { ...store.customerFollowUps[idx], ...followup }
+        rec = { ...store.customerFollowUps[idx], ...followup }
+        store.customerFollowUps[idx] = rec
       } else {
-        store.customerFollowUps.push({
+        rec = {
           id: followup.id || `fu${Date.now()}`,
           customerId: followup.customerId || '',
           customerName: followup.customerName || '',
@@ -1526,10 +1624,42 @@ async function handleFollowupImport(event) {
           nextFollowup: followup.nextFollowup || '',
           operator: followup.operator || '',
           remark: followup.remark || ''
-        })
+        }
+        store.customerFollowUps.push(rec)
       }
+      importedFollowups.push(rec)
     })
-    ElMessage.success(`成功导入 ${result.data.length} 条跟进记录`)
+    saveToLocalStorage()
+
+    if (!store.localMode) {
+      try {
+        localStorage.removeItem('supabase_rls_failed')
+        const { syncToSupabase } = await import('../supabase.js')
+        let syncSuccess = 0
+        let syncFail = 0
+        const failReasons = []
+        for (const f of importedFollowups) {
+          const r = await syncToSupabase('customer_follow_ups', f)
+          if (r.success) syncSuccess++
+          else {
+            syncFail++
+            const reason = r.error || r.rawError || '未知错误'
+            if (failReasons.length < 3 && !failReasons.includes(reason)) failReasons.push(reason)
+          }
+        }
+        if (syncFail === 0) {
+          ElMessage.success(`成功导入 ${importedFollowups.length} 条跟进记录并已同步到云端`)
+        } else {
+          const detail = failReasons.length > 0 ? `\n失败原因：${failReasons.join('；')}` : ''
+          ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedFollowups.length} 条，云端同步成功 ${syncSuccess} 条，失败 ${syncFail} 条${detail}` })
+        }
+      } catch (e) {
+        console.error('云端同步失败:', e)
+        ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedFollowups.length} 条，但云端同步失败：${e.message || e}` })
+      }
+    } else {
+      ElMessage.success(`成功导入 ${importedFollowups.length} 条跟进记录（本地模式）`)
+    }
   }).catch(() => {})
 }
 

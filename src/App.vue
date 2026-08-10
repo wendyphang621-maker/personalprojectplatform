@@ -520,8 +520,8 @@ const syncableTables = [
   { name: 'product_models', label: '机型参数库' },
   { name: 'product_certs', label: '合规认证档案' },
   { name: 'product_images', label: '渲染图素材库' },
-  { name: 'logistics_orders', label: '物流运单跟踪' },
-  { name: 'package_freight_records', label: '物流费用对账' },
+  { name: 'logistics_bills', label: '物流运单跟踪' },
+  { name: 'customer_payments', label: '付款记录' },
   { name: 'sales_orders', label: '订单总台账' },
   { name: 'customer_groups', label: '客户分组配置' },
   { name: 'delivery_allocations', label: '出货分配台账' },
@@ -589,15 +589,28 @@ async function executeSync() {
           for (const item of localData) {
             let pushData = { ...item }
             let recordId = pushData.id || '(无ID)'
-            if (pushData.id) {
-              const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-              if (!uuidPattern.test(pushData.id)) {
-                delete pushData.id
+            // 不再删除非UUID的id：所有业务表均使用 TEXT 主键（CPAY-/CUST-/SO- 等），
+            // 由 syncToSupabase 内部根据 tablesWithTextId 白名单决定是否保留 id。
+            // 旧代码 delete pushData.id 会导致 UPSERT 无主键、主键非空约束失败。
+
+            // 付款记录前置校验：仅推送 CPAY- 前缀的标准 ID
+            if (tableName === 'customer_payments') {
+              if (!pushData.id || !/^CPAY-[a-z0-9]{8,16}$/.test(pushData.id)) {
+                tableResult.skip++
+                tableResult.errors.push({ id: recordId, error: 'ID非CPAY-标准格式，已拦截' })
+                console.warn(`[付款记录] 非标准ID已拦截同步: ${pushData.id}`)
+                continue
               }
             }
+
             const result = await syncToSupabase(tableName, pushData)
             if (result.success) {
               tableResult.success++
+              // 同步成功后清除待同步标记（付款记录）
+              if (tableName === 'customer_payments' && item._pendingSync) {
+                item._pendingSync = false
+              }
+              console.log(`[同步日志] 表=${tableName} ID=${recordId} 动作=upsert 时间=${new Date().toISOString()}`)
               // 自增ID表：insert 成功后用数据库返回的 id 更新本地记录，避免重复推送
               if (result.id && item.id && String(item.id) !== String(result.id)) {
                 console.log(`[同步] 更新本地记录 id: ${item.id} → ${result.id}`)
@@ -643,8 +656,8 @@ async function saveLocalData(tableName, data) {
     'product_models': () => store.productModels,
     'product_certs': () => store.certRecords,
     'product_images': () => store.productImages,
-    'logistics_orders': () => store.logisticsBills,
-    'package_freight_records': () => store.freightRecords,
+    'logistics_bills': () => store.logisticsBills,
+    'customer_payments': () => store.customerPayments,
     'sales_orders': () => store.salesOrders,
     'customer_groups': () => store.customerGroups,
     'delivery_allocations': () => store.deliveryAllocations,
@@ -689,8 +702,8 @@ async function getLocalData(tableName) {
     'product_models': () => store.productModels,
     'product_certs': () => store.certRecords,
     'product_images': () => store.productImages || [],
-    'logistics_orders': () => store.logisticsBills,
-    'package_freight_records': () => store.freightRecords || [],
+    'logistics_bills': () => store.logisticsBills,
+    'customer_payments': () => store.customerPayments,
     'sales_orders': () => store.salesOrders,
     'customer_groups': () => store.customerGroups.map(g => typeof g === 'string' ? { group_name: g } : g),
     'delivery_allocations': () => store.deliveryAllocations || [],

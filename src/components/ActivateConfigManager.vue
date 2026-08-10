@@ -198,7 +198,7 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { store, addActivateExportConfig, updateActivateExportConfig, deleteActivateExportConfig, addDailyReminder, canBatchDelete, canEditActivateConfig } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { importFromExcel } from '../utils/excelImport.js'
+import { importFromExcel, importAndSync } from '../utils/excelImport.js'
 
 const activateImportInput = ref(null)
 const showActivateDialog = ref(false)
@@ -479,6 +479,35 @@ async function handleActivateImport(event) {
     successRecords.forEach(item => addActivateExportConfig(item))
     activateImportResult.success = successRecords.length
     showActivateImportResult.value = true
+
+    // 云端同步：逐条写入 activate_export_configs 表
+    if (successRecords.length > 0 && !store.localMode) {
+      try {
+        localStorage.removeItem('supabase_rls_failed')
+        const { syncToSupabase } = await import('../supabase.js')
+        let syncSuccess = 0
+        let syncFail = 0
+        const failReasons = []
+        for (const item of successRecords) {
+          const r = await syncToSupabase('activate_export_configs', item)
+          if (r.success) syncSuccess++
+          else {
+            syncFail++
+            const reason = r.error || r.rawError || '未知错误'
+            if (failReasons.length < 3 && !failReasons.includes(reason)) failReasons.push(reason)
+          }
+        }
+        if (syncFail === 0) {
+          ElMessage.success(`${successRecords.length} 条激活配置已同步到云端`)
+        } else {
+          const detail = failReasons.length > 0 ? `失败原因：${failReasons.join('；')}` : ''
+          ElMessage({ type: 'warning', duration: 6000, message: `导入成功${successRecords.length}条，云端同步成功${syncSuccess}条，失败${syncFail}条 ${detail}` })
+        }
+      } catch (e) {
+        console.error('激活配置云端同步失败:', e)
+        ElMessage({ type: 'warning', duration: 6000, message: `导入成功${successRecords.length}条，但云端同步失败：${e.message || e}` })
+      }
+    }
   } catch (err) {
     ElMessage.error('导入失败：' + err.message)
   } finally {

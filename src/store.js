@@ -857,6 +857,8 @@ const SHORT_ID_FORMATS = {
   cr: { prefix: 'CR', pad: 4, storeKey: 'certRecords' },
   cert: { prefix: 'CERT', pad: 4, storeKey: 'certRecords' },
   lb: { prefix: 'LB', pad: 4, storeKey: 'logisticsBills' },
+  cp: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments', random: true, randomLen: 12 },
+  pay: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments', random: true, randomLen: 12 },
   tag: { prefix: 'TAG', pad: 3, storeKey: 'tags' },
   cat: { prefix: 'CAT', pad: 3, storeKey: 'categories' },
   gb: { prefix: 'GB', pad: 3, storeKey: 'groups' },
@@ -866,10 +868,14 @@ const SHORT_ID_FORMATS = {
   model: { prefix: 'PM', pad: 3, storeKey: 'productModels' },
   pm: { prefix: 'PM', pad: 3, storeKey: 'productModels' },
   so: { prefix: 'SO', pad: 5, storeKey: 'salesOrders' },
+  sd: { prefix: 'SD', pad: 4, storeKey: 'sampleDeliveries' },
+  sample: { prefix: 'SD', pad: 4, storeKey: 'sampleDeliveries' },
   aec: { prefix: 'AEC', pad: 3, storeKey: 'activateExportConfigs' },
   cmf: { prefix: 'CMF', pad: 3, storeKey: 'certMatrixFiles' },
   cmc: { prefix: 'CMC', pad: 3, storeKey: 'certMatrixCells' },
-  cmt: { prefix: 'CMT', pad: 3, storeKey: 'certMatrixTemplates' }
+  cmt: { prefix: 'CMT', pad: 3, storeKey: 'certMatrixTemplates' },
+  fu: { prefix: 'CFU', pad: 4, storeKey: 'customerFollowUps' },
+  followup: { prefix: 'CFU', pad: 4, storeKey: 'customerFollowUps' }
 }
 
 function getNextCounter(fmtPrefix, storeKey) {
@@ -902,7 +908,27 @@ function getNextCounter(fmtPrefix, storeKey) {
 export function generateId(prefix = '') {
   const format = SHORT_ID_FORMATS[prefix]
   if (format) {
-    const { prefix: fmtPrefix, pad, storeKey } = format
+    const { prefix: fmtPrefix, pad, storeKey, random, randomLen } = format
+    // 随机模式：生成 CPAY-xxxxxxxxxxxx 格式（12位字母数字），保证唯一
+    if (random) {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+      let attempts = 0
+      while (attempts < 20) {
+        let rand = ''
+        for (let i = 0; i < (randomLen || 12); i++) {
+          rand += chars[Math.floor(Math.random() * chars.length)]
+        }
+        const id = `${fmtPrefix}-${rand}`
+        // 检查本地是否已存在
+        const exists = store[storeKey] && Array.isArray(store[storeKey])
+          ? store[storeKey].some(item => item && item.id === id)
+          : false
+        if (!exists) return id
+        attempts++
+      }
+      // 兜底：20 次仍冲突则加时间戳后缀
+      return `${fmtPrefix}-${Date.now().toString(36)}`
+    }
     const nextNum = getNextCounter(fmtPrefix, storeKey)
     idCounters[fmtPrefix] = nextNum + 1
     return `${fmtPrefix}-${String(nextNum).padStart(pad, '0')}`
@@ -914,6 +940,11 @@ export function generateId(prefix = '') {
     idCounters[prefix]++
   }
   return `${prefix}-${String(idCounters[prefix]).padStart(3, '0')}`
+}
+
+// 校验付款记录 ID 是否为标准 CPAY- 前缀
+export function isValidPaymentId(id) {
+  return typeof id === 'string' && /^CPAY-[a-z0-9]{8,16}$/.test(id)
 }
 
 const permissionMatrix = {
@@ -994,6 +1025,7 @@ export async function addCustomer(data) {
     updatedAt: new Date().toISOString()
   }
   store.customers.push(customer)
+  saveToLocalStorage()
   
   try {
     const { syncToSupabase } = await import('./supabase.js')
@@ -1006,7 +1038,15 @@ export async function addCustomer(data) {
       company: customer.company,
       email: customer.email,
       phone: customer.phone,
-      address: customer.address
+      address: customer.address,
+      model: customer.model,
+      firstContactDate: customer.firstContactDate,
+      sampleCount: customer.sampleCount,
+      notes: customer.notes,
+      remark: customer.remark,
+      localMaterialPath: customer.localMaterialPath,
+      attachments: customer.attachments,
+      tags: customer.tags
     }
     await syncToSupabase('customers', dbData)
     console.log('[同步] 客户已保存到后端')
@@ -1021,19 +1061,29 @@ export async function updateCustomer(customer) {
   const idx = store.customers.findIndex(c => c.id === customer.id)
   if (idx > -1) {
     store.customers[idx] = { ...customer, updatedAt: new Date().toISOString() }
+    saveToLocalStorage()
     
     try {
       const { syncToSupabase } = await import('./supabase.js')
+      const c = store.customers[idx]
       const dbData = {
-        id: store.customers[idx].id,
-        name: store.customers[idx].name,
-        group: store.customers[idx].group,
-        country: store.customers[idx].country,
-        region: store.customers[idx].region,
-        company: store.customers[idx].company,
-        email: store.customers[idx].email,
-        phone: store.customers[idx].phone,
-        address: store.customers[idx].address
+        id: c.id,
+        name: c.name,
+        group: c.group,
+        country: c.country,
+        region: c.region,
+        company: c.company,
+        email: c.email,
+        phone: c.phone,
+        address: c.address,
+        model: c.model,
+        firstContactDate: c.firstContactDate,
+        sampleCount: c.sampleCount,
+        notes: c.notes,
+        remark: c.remark,
+        localMaterialPath: c.localMaterialPath,
+        attachments: c.attachments,
+        tags: c.tags
       }
       await syncToSupabase('customers', dbData)
       console.log('[同步] 客户已更新到后端')
@@ -1072,13 +1122,16 @@ function filterSampleFields(data) {
 
 export async function addSampleDelivery(data) {
   const delivery = {
-    id: data.id,
+    id: data.id || generateId('sd'),
     customer_name: data.customer_name || '',
     model: data.model || '',
     area: data.area || '',
     logistics: data.logistics || '',
     tracking_no: data.tracking_no || '',
     send_date: data.send_date || '',
+    qty: data.qty || 1,
+    freight: data.freight || 0,
+    status: data.status || '待发货',
     remark: data.remark || ''
   }
   
@@ -1522,7 +1575,9 @@ export async function syncLocalToCloud(showToast = true) {
     'product_models': store.productModels,
     'sales_orders': store.salesOrders,
     'sample_deliveries': store.sampleDeliveries,
-    'logistics_orders': store.logisticsBills,
+    // 修复：旧代码把 logisticsBills 写入 logistics_orders 表，
+    // 而 syncAllFromSupabase 从 logistics_bills 表读取，导致写入的数据读不回来。
+    'logistics_bills': store.logisticsBills,
     'daily_todos': store.dailyTodos,
     'projects': store.projects,
     'stages': store.stages,
@@ -1533,7 +1588,13 @@ export async function syncLocalToCloud(showToast = true) {
     'cert_matrix_templates': store.certMatrixTemplates,
     'cert_matrix_statuses': store.certMatrixStatuses,
     'suppliers': store.suppliers,
-    'package_sample_follows': store.packageSampleFollows
+    'package_sample_follows': store.packageSampleFollows,
+    // 补齐：客户跟进、客户付款、认证档案之前未纳入一键同步，导致换设备后丢失
+    'customer_follow_ups': store.customerFollowUps,
+    'customer_payments': store.customerPayments,
+    'cert_records': store.certRecords,
+    'daily_reminders': store.dailyReminders,
+    'todo_remind_logs': store.todoRemindLogs
   }
   
   let totalUploaded = 0
@@ -1652,18 +1713,31 @@ export async function syncAllFromSupabase(showToast = true) {
     console.log(`[同步] 同步完成: ${successCount}/${tables.length} 表成功, 共 ${totalCount} 条记录`)
     console.log('=======================================')
     
-    // 如果失败的表太多，自动降级为本地模式
+    // 如果失败的表太多，提示用户但不自动降级为本地模式
     if (showToast && successCount < tables.length / 2) {
-      console.warn(`[同步] ⚠️ 超过半数表同步失败，自动降级为本地模式`)
-      toggleLocalMode(true)
-      setTimeout(() => {
-        alert(`⚠️ 检测到 Supabase 权限问题（失败 ${tables.length - successCount} 个表），\n已自动切换为【本地模式】，数据仍可正常使用。\n\n修复权限后可在【设置 → Supabase 配置】中重新开启云端同步。`)
-      }, 100)
-      return { success: true, totalCount, successCount, autoSwitchedToLocal: true }
+      const failedTables = tables.length - successCount
+      console.warn(`[同步] ⚠️ 超过半数表同步失败（${failedTables}/${tables.length}）`)
+      const dontShow = sessionStorage.getItem('supabase_sync_failed_shown')
+      if (!dontShow) {
+        sessionStorage.setItem('supabase_sync_failed_shown', '1')
+        setTimeout(async () => {
+          const { ElMessage } = await import('element-plus')
+          ElMessage({
+            type: 'warning',
+            duration: 10000,
+            showClose: true,
+            message: `Supabase 同步失败（${failedTables}/${tables.length} 个表），数据保留本地。请在【设置→Supabase配置】排查。`
+          })
+        }, 100)
+      }
+      return { success: false, totalCount, successCount, syncFailed: true }
     }
     
     if (showToast && totalCount > 0) {
-      alert(`数据同步完成！\n\n共加载 ${totalCount} 条记录\n${successCount}/${tables.length} 个数据表`)
+      setTimeout(async () => {
+        const { ElMessage } = await import('element-plus')
+        ElMessage.success(`数据同步完成：${totalCount} 条记录，${successCount}/${tables.length} 个表`)
+      }, 100)
     }
     
     return { success: true, totalCount, successCount }
@@ -2364,7 +2438,7 @@ export function addLogisticsBill(data) {
     customerName: data.customerName || '',
     country: data.country || '',
     freightForwarder: data.freightForwarder || '',
-    amount: data.amount || '',
+    freightAmount: data.freightAmount !== undefined ? data.freightAmount : (data.amount || ''),
     status: data.status || 'unpaid',
     verificationDate: data.verificationDate || ''
   }

@@ -459,89 +459,102 @@ export function setLocalMode(mode) {
   console.log(`[配置] 本地模式已${mode ? '开启' : '关闭'}`)
 }
 
+// 表结构白名单：与 sql/rebuild_database.sql 保持一致。
+// allowedFields 必须包含前端实际写入的所有字段（snake_case），
+// 否则 convertDataForSupabase 会静默剥离字段导致数据丢失。
 const TABLE_SCHEMA = {
   customers: {
-    allowedFields: ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'created_at', 'updated_at']
+    allowedFields: ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'model', 'first_contact_date', 'sample_count', 'notes', 'remark', 'local_material_path', 'attachments', 'tags', 'created_at', 'updated_at']
   },
   sample_deliveries: {
-    allowedFields: ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'remark']
-  },
-  package_sample_follows: {
-    allowedFields: ['id', 'customer_name', 'model', 'follow_content', 'next_follow_date', 'last_follow_date', 'follow_type', 'remark', 'created_at', 'updated_at']
-  },
-  product_models: {
-    allowedFields: ['id', 'name', 'model_name', 'chip', 'chip_scheme', 'screen', 'screen_param', 'certifications', 'cert_list', 'supplier_id', 'supplier_name', 'render_image_path', 'created_at', 'updated_at']
-  },
-  product_certs: {
-    allowedFields: ['id', 'model_id', 'model_name', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'attachments', 'created_at', 'updated_at']
-  },
-  product_images: {
-    allowedFields: ['id', 'model_id', 'pic_url', 'pic_size', 'pic_type', 'upload_time', 'created_at']
-  },
-  logistics_orders: {
-    allowedFields: ['id', 'order_no', 'tracking_no', 'logistics_company', 'status', 'estimated_delivery', 'actual_delivery', 'created_at', 'updated_at']
-  },
-  package_freight_records: {
-    allowedFields: ['id', 'customer_name', 'model', 'invoice_no', 'total_amount', 'paid_amount', 'unpaid_amount', 'currency', 'remark', 'created_at', 'updated_at']
+    allowedFields: ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'qty', 'freight', 'status', 'remark', 'created_at', 'updated_at']
   },
   sales_orders: {
-    allowedFields: ['id', 'order_no', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'order_type', 'currency', 'created_at', 'updated_at']
+    allowedFields: ['id', 'customer_id', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'currency', 'bulk_freight', 'order_type', 'payment_status', 'order_no', 'remark', 'created_at', 'updated_at']
   },
-  logistics_bills: {
-    allowedFields: ['id', 'tracking_no', 'customer_id', 'country', 'freight_forwarder', 'freight_amount', 'payment_status', 'write_off_date', 'created_at', 'updated_at']
+  product_models: {
+    allowedFields: ['id', 'name', 'model_name', 'chip', 'chip_scheme', 'screen', 'screen_param', 'certifications', 'cert_list', 'supplier_id', 'supplier_name', 'render_image_path', 'remark', 'created_at', 'updated_at']
   },
-  customer_groups: {
-    allowedFields: ['id', 'group_name', 'description', 'color', 'created_at']
+  // 认证档案表名统一为 cert_records（旧代码用 product_certs，已废弃）
+  cert_records: {
+    allowedFields: ['id', 'model_id', 'model_name', 'model', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'expiry_date', 'cert_file_path', 'attachments', 'organization', 'remark', 'created_at', 'updated_at']
   },
-  activate_export_configs: {
-    allowedFields: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'created_at', 'updated_at']
+  product_certs: {
+    allowedFields: ['id', 'model_id', 'model_name', 'model', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'expiry_date', 'cert_file_path', 'attachments', 'organization', 'remark', 'created_at', 'updated_at']
   },
   cert_matrix_files: {
-    allowedFields: ['id', 'name', 'template', 'category', 'order', 'remark', 'is_deleted', 'update_time']
+    allowedFields: ['id', 'name', 'template', 'category', 'order', 'order_no', 'remark', 'is_deleted', 'update_time', 'created_at', 'updated_at']
   },
   cert_matrix_cells: {
-    allowedFields: ['id', 'file_id', 'model_id', 'status', 'remark', 'cert_id', 'cert_type', 'is_deleted', 'update_time']
+    allowedFields: ['id', 'file_id', 'model_id', 'status', 'remark', 'cert_id', 'cert_type', 'is_deleted', 'update_time', 'created_at', 'updated_at']
   },
   cert_matrix_templates: {
-    allowedFields: ['id', 'name', 'files', 'created_at']
+    allowedFields: ['id', 'name', 'files', 'snapshot', 'created_at', 'updated_at']
   },
   cert_matrix_statuses: {
-    allowedFields: ['id', 'key', 'key_value', 'name', 'color', 'bg']
+    allowedFields: ['id', 'key', 'key_value', 'name', 'color', 'bg', 'created_at', 'updated_at']
   },
   suppliers: {
-    allowedFields: ['id', 'name', 'contact', 'phone', 'email', 'address', 'remark', 'created_at']
+    allowedFields: ['id', 'name', 'contact', 'phone', 'email', 'address', 'supply_models', 'qualification_path', 'remark', 'created_at', 'updated_at']
   },
-  customer_follow_ups: {
-    allowedFields: ['id', 'customer_id', 'content', 'followup_date', 'result', 'contact_method', 'po_number', 'next_followup', 'operator', 'remark', 'created_at']
-  },
-  customer_payments: {
-    allowedFields: ['id', 'customer_id', 'amount', 'payment_date', 'method', 'remark', 'created_at']
-  },
-  projects: {
-    allowedFields: ['id', 'name', 'description', 'color', 'status', 'created_at']
-  },
-  stages: {
-    allowedFields: ['id', 'project_id', 'name', 'order', 'created_at']
-  },
-  tasks: {
-    allowedFields: ['id', 'project_id', 'stage_id', 'title', 'description', 'status', 'priority', 'assignee', 'due_date', 'created_at']
+  logistics_bills: {
+    allowedFields: ['id', 'logistics_no', 'customer_id', 'customer_name', 'country', 'freight_forwarder', 'freight_amount', 'payment_status', 'bill_image', 'write_off_date', 'remark', 'created_at', 'updated_at']
   },
   daily_todos: {
-    allowedFields: ['id', 'todo_date', 'date', 'title', 'content', 'completed', 'priority', 'created_at']
+    allowedFields: ['id', 'todo_date', 'date', 'date_value', 'title', 'content', 'completed', 'priority', 'category', 'customer_id', 'customer_name', 'model_id', 'model', 'deadline', 'tags', 'created_at', 'updated_at']
+  },
+  customer_follow_ups: {
+    allowedFields: ['id', 'customer_id', 'customer_name', 'content', 'followup_date', 'result', 'contact_method', 'po_number', 'next_followup', 'operator', 'attachments', 'remark', 'created_at', 'updated_at']
+  },
+  customer_payments: {
+    allowedFields: ['id', 'customer_id', 'customer_name', 'order_no', 'order_date', 'product_name', 'spec_model', 'quantity', 'unit_price', 'order_amount', 'delivery_date', 'payment_batch', 'payment_type', 'payment_date', 'payment_amount', 'payment_method', 'arrival_status', 'remark', 'created_at', 'updated_at']
+  },
+  projects: {
+    allowedFields: ['id', 'name', 'description', 'color', 'status', 'project_type', 'created_at', 'updated_at']
+  },
+  stages: {
+    allowedFields: ['id', 'project_id', 'name', 'order_no', 'order', 'color', 'created_at', 'updated_at']
+  },
+  tasks: {
+    allowedFields: ['id', 'project_id', 'stage_id', 'name', 'title', 'description', 'duration', 'start_date', 'completed', 'milestone', 'status', 'priority', 'assignee', 'due_date', 'customer_name', 'model', 'logistics_no', 'email', 'sample_qty', 'created_at', 'updated_at']
+  },
+  package_sample_follows: {
+    allowedFields: ['id', 'project_name', 'internal_model', 'business_type', 'follow_status', 'send_date', 'receive_date', 'next_follow_date', 'follow_logs', 'remark', 'custom_field1', 'attachments', 'email_subject', 'customer', 'customer_name', 'overseas_contact', 'color_box_version', 'file_link', 'send_time', 'logistics_no', 'logistics_company', 'receiver', 'destination', 'send_purpose', 'send_qty', 'created_at', 'updated_at']
+  },
+  activate_export_configs: {
+    allowedFields: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'model_name', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'created_at', 'updated_at']
   },
   daily_reminders: {
-    allowedFields: ['id', 'time', 'content', 'enabled', 'created_at']
+    allowedFields: ['id', 'title', 'content', 'business_type', 'activate_config_id', 'remind_time', 'time_value', 'repeat_rule', 'status', 'enabled', 'remark', 'created_at', 'updated_at']
   },
   todo_remind_logs: {
-    allowedFields: ['id', 'remind_date', 'todo_id', 'reminded_at']
+    allowedFields: ['id', 'remind_date', 'todo_id', 'reminded_at', 'created_at', 'updated_at']
+  },
+  product_images: {
+    allowedFields: ['id', 'model_id', 'pic_url', 'pic_size', 'pic_type', 'upload_time', 'created_at', 'updated_at']
   }
 }
 
 const FIELD_MAPPING = {
-  sample_deliveries: {},
-  sales_orders: {
-    id: 'order_no',
+  sample_deliveries: {
     customerName: 'customer_name',
+    sendDate: 'send_date',
+    trackingNo: 'tracking_no',
+    qty: 'qty',
+    model: 'model',
+    area: 'area',
+    logistics: 'logistics',
+    freight: 'freight',
+    status: 'status',
+    remark: 'remark',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  sales_orders: {
+    // 修复：旧代码 id: 'order_no' 会让前端 id 写入 order_no 列、id 列为空，
+    // 导致 PRIMARY KEY 非空约束失败、整行写入失败。改为保留 id。
+    customerName: 'customer_name',
+    customerId: 'customer_id',
     bookingDate: 'order_date',
     logisticsNo: 'logistics_no',
     qty: 'quantity',
@@ -550,11 +563,26 @@ const FIELD_MAPPING = {
     balanceSettled: 'payment_status'
   },
   package_sample_follows: {
-    customerId: 'customer_name',
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
+    projectName: 'project_name',
+    internalModel: 'internal_model',
+    businessType: 'business_type',
+    followStatus: 'follow_status',
+    sendDate: 'send_date',
+    receiveDate: 'receive_date',
     nextFollowDate: 'next_follow_date',
-    lastFollowDate: 'last_follow_date'
+    followLogs: 'follow_logs',
+    customField1: 'custom_field1',
+    emailSubject: 'email_subject',
+    overseasContact: 'overseas_contact',
+    colorBoxVersion: 'color_box_version',
+    fileLink: 'file_link',
+    sendTime: 'send_time',
+    logisticsNo: 'logistics_no',
+    logisticsCompany: 'logistics_company',
+    sendPurpose: 'send_purpose',
+    sendQty: 'send_qty',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
   },
   product_models: {
     id: 'id',
@@ -563,6 +591,20 @@ const FIELD_MAPPING = {
     screen: 'screen_param',
     certifications: 'cert_list',
     supplierId: 'supplier_name',
+    renderImagePath: 'render_image_path',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  // 认证档案表名统一为 cert_records；product_certs 保留别名以兼容旧调用
+  cert_records: {
+    modelId: 'model_id',
+    modelName: 'model_name',
+    certType: 'cert_type',
+    certNo: 'cert_no',
+    issueDate: 'issue_date',
+    expireDate: 'expire_date',
+    expiryDate: 'expiry_date',
+    certFilePath: 'cert_file_path',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
@@ -573,6 +615,8 @@ const FIELD_MAPPING = {
     certNo: 'cert_no',
     issueDate: 'issue_date',
     expireDate: 'expire_date',
+    expiryDate: 'expiry_date',
+    certFilePath: 'cert_file_path',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
@@ -586,33 +630,21 @@ const FIELD_MAPPING = {
   },
   customers: {
     group: 'group',
-    createdAt: 'created_at',
-    updatedAt: 'updated_at'
-  },
-  logistics_orders: {
-    orderNo: 'order_no',
-    trackingNo: 'tracking_no',
-    logisticsCompany: 'logistics_company',
-    estimatedDelivery: 'estimated_delivery',
-    actualDelivery: 'actual_delivery',
-    createdAt: 'created_at',
-    updatedAt: 'updated_at'
-  },
-  package_freight_records: {
-    invoiceNo: 'invoice_no',
-    totalAmount: 'total_amount',
-    paidAmount: 'paid_amount',
-    unpaidAmount: 'unpaid_amount',
+    firstContactDate: 'first_contact_date',
+    sampleCount: 'sample_count',
+    localMaterialPath: 'local_material_path',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
   logistics_bills: {
-    trackingNo: 'tracking_no',
+    logisticsNo: 'logistics_no',
+    customerName: 'customer_name',
     customerId: 'customer_id',
     country: 'country',
     freightForwarder: 'freight_forwarder',
     freightAmount: 'freight_amount',
     paymentStatus: 'payment_status',
+    billImage: 'bill_image',
     writeOffDate: 'write_off_date',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
@@ -645,6 +677,78 @@ const FIELD_MAPPING = {
   },
   cert_matrix_statuses: {
     key: 'key'
+  },
+  customer_follow_ups: {
+    customerId: 'customer_id',
+    customerName: 'customer_name',
+    followupDate: 'followup_date',
+    contactMethod: 'contact_method',
+    poNumber: 'po_number',
+    nextFollowup: 'next_followup',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  customer_payments: {
+    customerId: 'customer_id',
+    customerName: 'customer_name',
+    orderNo: 'order_no',
+    orderDate: 'order_date',
+    productName: 'product_name',
+    specModel: 'spec_model',
+    unitPrice: 'unit_price',
+    orderAmount: 'order_amount',
+    deliveryDate: 'delivery_date',
+    paymentBatch: 'payment_batch',
+    paymentType: 'payment_type',
+    paymentDate: 'payment_date',
+    paymentAmount: 'payment_amount',
+    paymentMethod: 'payment_method',
+    arrivalStatus: 'arrival_status',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  projects: {
+    projectType: 'project_type',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  stages: {
+    projectId: 'project_id',
+    order: 'order_no',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  tasks: {
+    projectId: 'project_id',
+    stageId: 'stage_id',
+    startDate: 'start_date',
+    customerName: 'customer_name',
+    logisticsNo: 'logistics_no',
+    sampleQty: 'sample_qty',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  daily_todos: {
+    todoDate: 'todo_date',
+    dateValue: 'date_value',
+    customerId: 'customer_id',
+    customerName: 'customer_name',
+    modelId: 'model_id',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  daily_reminders: {
+    businessType: 'business_type',
+    activateConfigId: 'activate_config_id',
+    remindTime: 'remind_time',
+    repeatRule: 'repeat_rule',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+  },
+  todo_remind_logs: {
+    todoId: 'todo_id',
+    remindedAt: 'reminded_at',
+    createdAt: 'created_at'
   }
 }
 
@@ -749,22 +853,18 @@ export async function syncToSupabase(tableName, data) {
         sales_orders: 'SO',
         daily_todos: 'TODO',
         suppliers: 'SUP',
-        logistics_orders: 'LOG',
+        logistics_bills: 'LB',
         package_sample_follows: 'PKG',
         customer_follow_ups: 'CFU',
         customer_payments: 'CPAY',
         projects: 'PRJ',
         stages: 'STG',
         tasks: 'TSK',
-        package_freight_records: 'PFR',
-        inventory: 'INV',
-        inventory_logs: 'ILOG',
-        price_history: 'PH',
-        customer_groups: 'CG',
         cert_matrix_files: 'CMF',
         cert_matrix_cells: 'CMC',
         cert_matrix_templates: 'CMT',
         cert_matrix_statuses: 'CMS',
+        cert_records: 'CR',
         product_certs: 'PC',
         product_images: 'PI',
         daily_reminders: 'DR',
@@ -792,12 +892,13 @@ export async function syncToSupabase(tableName, data) {
     let convertedData = convertDataForSupabase(safeData, tableName)
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    const tablesWithTextId = ['sample_deliveries', 'product_models', 'customers', 'sales_orders', 'suppliers', 'logistics_orders', 'package_sample_follows', 'daily_todos', 'customer_follow_ups', 'customer_payments', 'projects', 'stages', 'tasks', 'package_freight_records', 'inventory', 'inventory_logs', 'price_history', 'customer_groups', 'cert_matrix_files', 'cert_matrix_cells', 'cert_matrix_templates', 'cert_matrix_statuses', 'product_certs', 'product_images', 'daily_reminders', 'todo_remind_logs']
+    const tablesWithTextId = ['sample_deliveries', 'product_models', 'customers', 'sales_orders', 'suppliers', 'logistics_bills', 'package_sample_follows', 'daily_todos', 'customer_follow_ups', 'customer_payments', 'projects', 'stages', 'tasks', 'cert_matrix_files', 'cert_matrix_cells', 'cert_matrix_templates', 'cert_matrix_statuses', 'cert_records', 'product_certs', 'product_images', 'daily_reminders', 'todo_remind_logs', 'activate_export_configs']
     const preserveId = tablesWithTextId.includes(tableName)
 
-    // 自增ID表：id 由数据库 BIGSERIAL 生成，前端不得传入
-    // 仅当 id 为纯数字（数据库已生成）时才保留用于 upsert，否则一律剥离走 insert
-    const tablesWithAutoId = ['activate_export_configs']
+    // 自增ID表：id 由数据库 BIGSERIAL 生成，前端不得传入。
+    // 现在 activate_export_configs 已改为前端生成 AEC-XXX 短编号（TEXT 主键），
+    // 因此该列表置空，所有业务表均使用前端传入的 TEXT id 走 UPSERT。
+    const tablesWithAutoId = []
     const isAutoIdTable = tablesWithAutoId.includes(tableName)
 
     if (isAutoIdTable && convertedData.id) {

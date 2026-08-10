@@ -232,7 +232,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { store, deleteSampleDelivery } from '../store.js'
+import { store, deleteSampleDelivery, saveToLocalStorage, generateId } from '../store.js'
 import ExcelJS from 'exceljs'
 import SampleFormDialog from './SampleFormDialog.vue'
 import { importFromExcel, fieldMappingPresets, showImportResult } from '../utils/excelImport.js'
@@ -549,14 +549,17 @@ async function handleSampleImport(event) {
     `检测到 ${result.data.length} 条寄样数据，是否导入？\n注意：相同ID的记录将被覆盖`,
     '确认导入',
     { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
-  ).then(() => {
+  ).then(async () => {
+    const importedSamples = []
     result.data.forEach(sample => {
       const idx = store.sampleDeliveries.findIndex(s => s.id === sample.id)
+      let rec
       if (idx > -1) {
-        store.sampleDeliveries[idx] = { ...store.sampleDeliveries[idx], ...sample }
+        rec = { ...store.sampleDeliveries[idx], ...sample }
+        store.sampleDeliveries[idx] = rec
       } else {
-        store.sampleDeliveries.push({
-          id: sample.id || `sd${Date.now()}`,
+        rec = {
+          id: sample.id && sample.id.match(/^(SD|SD-)\d+/i) ? sample.id : generateId('sd'),
           customer_name: sample.customer_name || '',
           model: sample.model || '',
           qty: sample.qty || 1,
@@ -567,10 +570,42 @@ async function handleSampleImport(event) {
           freight: sample.freight || 0,
           status: sample.status || '待发货',
           remark: sample.remark || ''
-        })
+        }
+        store.sampleDeliveries.push(rec)
       }
+      importedSamples.push(rec)
     })
-    ElMessage.success(`成功导入 ${result.data.length} 条寄样数据`)
+    saveToLocalStorage()
+
+    if (!store.localMode) {
+      try {
+        localStorage.removeItem('supabase_rls_failed')
+        const { syncToSupabase } = await import('../supabase.js')
+        let syncSuccess = 0
+        let syncFail = 0
+        const failReasons = []
+        for (const s of importedSamples) {
+          const r = await syncToSupabase('sample_deliveries', s)
+          if (r.success) syncSuccess++
+          else {
+            syncFail++
+            const reason = r.error || r.rawError || '未知错误'
+            if (failReasons.length < 3 && !failReasons.includes(reason)) failReasons.push(reason)
+          }
+        }
+        if (syncFail === 0) {
+          ElMessage.success(`成功导入 ${importedSamples.length} 条寄样数据并已同步到云端`)
+        } else {
+          const detail = failReasons.length > 0 ? `失败原因：${failReasons.join('；')}` : ''
+          ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedSamples.length} 条，云端同步成功 ${syncSuccess} 条，失败 ${syncFail} 条 ${detail}` })
+        }
+      } catch (e) {
+        console.error('云端同步失败:', e)
+        ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedSamples.length} 条，但云端同步失败：${e.message || e}` })
+      }
+    } else {
+      ElMessage.success(`成功导入 ${importedSamples.length} 条寄样数据（本地模式）`)
+    }
   }).catch(() => {})
 }
 </script>
