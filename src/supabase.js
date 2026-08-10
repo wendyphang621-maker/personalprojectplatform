@@ -525,7 +525,7 @@ const TABLE_SCHEMA = {
     allowedFields: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'model_name', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'created_at', 'updated_at']
   },
   daily_reminders: {
-    allowedFields: ['id', 'title', 'content', 'business_type', 'activate_config_id', 'remind_time', 'time_value', 'repeat_rule', 'status', 'enabled', 'remark', 'created_at', 'updated_at']
+    allowedFields: ['id', 'title', 'content', 'business_type', 'activate_config_id', 'remind_time', 'time_value', 'repeat_rule', 'recurrence_interval', 'custom_weekday', 'custom_monthday', 'deadline', 'category', 'customer', 'model', 'status', 'enabled', 'last_triggered_at', 'remark', 'created_at', 'updated_at']
   },
   todo_remind_logs: {
     allowedFields: ['id', 'remind_date', 'todo_id', 'reminded_at', 'created_at', 'updated_at']
@@ -742,6 +742,10 @@ const FIELD_MAPPING = {
     activateConfigId: 'activate_config_id',
     remindTime: 'remind_time',
     repeatRule: 'repeat_rule',
+    recurrenceInterval: 'recurrence_interval',
+    customWeekday: 'custom_weekday',
+    customMonthday: 'custom_monthday',
+    lastTriggeredAt: 'last_triggered_at',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },

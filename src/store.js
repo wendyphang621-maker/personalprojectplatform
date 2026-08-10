@@ -639,6 +639,22 @@ function migrateSampleDeliveries(data) {
     })
   }
   
+  // 为 dailyReminders 迁移新字段
+  if (data.dailyReminders && Array.isArray(data.dailyReminders)) {
+    data.dailyReminders = data.dailyReminders.map(r => {
+      const fixed = { ...r }
+      if (fixed.recurrenceInterval === undefined) fixed.recurrenceInterval = 1
+      if (fixed.customWeekday === undefined) fixed.customWeekday = 1
+      if (fixed.customMonthday === undefined) fixed.customMonthday = 1
+      if (fixed.deadline === undefined) fixed.deadline = ''
+      if (fixed.category === undefined) fixed.category = ''
+      if (fixed.customer === undefined) fixed.customer = ''
+      if (fixed.model === undefined) fixed.model = ''
+      if (fixed.lastTriggeredAt === undefined) fixed.lastTriggeredAt = null
+      return fixed
+    })
+  }
+  
   return data
 }
 
@@ -2855,9 +2871,17 @@ export function addDailyReminder(data) {
     activateConfigId: data.activateConfigId || '',
     remindTime: data.remindTime || '09:00',
     repeatRule: data.repeatRule || 'once',
+    recurrenceInterval: data.recurrenceInterval || 1,
+    customWeekday: data.customWeekday ?? 1,
+    customMonthday: data.customMonthday ?? 1,
+    deadline: data.deadline || '',
+    category: data.category || '',
+    customer: data.customer || '',
+    model: data.model || '',
     status: 'pending',
     remark: data.remark || '',
-    createdAt: new Date().toISOString().split('T')[0]
+    createdAt: new Date().toISOString().split('T')[0],
+    lastTriggeredAt: null
   }
   store.dailyReminders.push(r)
   saveToLocalStorage()

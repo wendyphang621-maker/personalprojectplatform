@@ -201,6 +201,27 @@
             </div>
           </div>
         </div>
+        
+        <div class="reminder-section">
+          <div class="section-header">
+            <h3>周期提醒</h3>
+          </div>
+          <div class="reminder-list">
+            <div v-if="todayReminders.length === 0" class="empty-reminder">
+              <p>暂无待触发的周期提醒</p>
+            </div>
+            <div v-for="reminder in todayReminders" :key="reminder.id" class="reminder-card">
+              <div class="reminder-header">
+                <span class="reminder-title">{{ reminder.title }}</span>
+                <el-button size="small" type="danger" text @click="deleteReminder(reminder.id)">删除</el-button>
+              </div>
+              <div class="reminder-info">
+                <span class="reminder-rule">{{ getReminderRuleText(reminder) }}</span>
+                <span v-if="reminder.customer" class="reminder-meta">{{ reminder.customer }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -243,10 +264,10 @@
       </el-button>
     </div>
     
-    <el-dialog v-model="showTodoDialog" title="新增待办" width="400px">
-      <el-form :model="todoForm" label-width="80px">
+    <el-dialog v-model="showTodoDialog" title="新增待办" width="500px">
+      <el-form :model="todoForm" label-width="90px">
         <el-form-item label="内容描述">
-          <el-input v-model="todoForm.content" type="textarea" :rows="3" />
+          <el-input v-model="todoForm.content" type="textarea" :rows="3" placeholder="请输入待办内容，例如：每月底提交彩盒审核情况" />
         </el-form-item>
         <el-form-item label="分类">
           <el-select v-model="todoForm.category">
@@ -268,6 +289,42 @@
         <el-form-item label="截止日期">
           <el-date-picker v-model="todoForm.deadline" type="date" />
         </el-form-item>
+        <el-form-item label="重复提醒">
+          <el-select v-model="todoForm.recurrenceRule" @change="onRecurrenceRuleChange">
+            <el-option label="不重复" value="none" />
+            <el-option label="每天" value="daily" />
+            <el-option label="工作日" value="workday" />
+            <el-option label="每周" value="weekly" />
+            <el-option label="每月" value="monthly" />
+            <el-option label="每年" value="yearly" />
+          </el-select>
+        </el-form-item>
+        <template v-if="todoForm.recurrenceRule === 'weekly'">
+          <el-form-item label="重复周几">
+            <el-select v-model="todoForm.customWeekday">
+              <el-option label="周一" :value="1" />
+              <el-option label="周二" :value="2" />
+              <el-option label="周三" :value="3" />
+              <el-option label="周四" :value="4" />
+              <el-option label="周五" :value="5" />
+              <el-option label="周六" :value="6" />
+              <el-option label="周日" :value="0" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <template v-if="todoForm.recurrenceRule === 'monthly'">
+          <el-form-item label="每月第">
+            <el-select v-model="todoForm.customMonthday">
+              <el-option v-for="i in 31" :key="i" :label="i + '日'" :value="i" />
+            </el-select>
+            <span style="margin-left: 10px;">提醒</span>
+          </el-form-item>
+        </template>
+        <template v-if="todoForm.recurrenceRule !== 'none' && todoForm.recurrenceRule !== 'daily' && todoForm.recurrenceRule !== 'workday'">
+          <el-form-item :label="todoForm.recurrenceRule === 'weekly' ? '每几周' : '每几月'">
+            <el-input-number v-model="todoForm.recurrenceInterval" :min="1" :max="12" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="showTodoDialog = false">取消</el-button>
@@ -279,7 +336,8 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { store, addDailyTodoItem, updateDailyTodoItem, getCustomerById } from '../store.js'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { store, addDailyTodoItem, updateDailyTodoItem, getCustomerById, addDailyReminder, deleteDailyReminder } from '../store.js'
 
 const emit = defineEmits(['navigate'])
 
@@ -290,13 +348,81 @@ const calendarMonth = ref(new Date().getMonth())
 const showTodoDialog = ref(false)
 const todoForm = reactive({
   content: '',
-  category: 'sample',
+  category: 'cat1',
   customer: '',
   model: '',
-  deadline: new Date().toISOString().split('T')[0]
+  deadline: new Date().toISOString().split('T')[0],
+  recurrenceRule: 'none',
+  recurrenceInterval: 1,
+  customWeekday: 1,
+  customMonthday: 1
 })
 
 const currentDragTodo = ref(null)
+
+const todayReminders = computed(() => {
+  const today = new Date()
+  const todayDay = today.getDay()
+  const todayDate = today.getDate()
+  
+  return store.dailyReminders.filter(reminder => {
+    if (reminder.status === 'completed') return false
+    
+    switch (reminder.repeatRule) {
+      case 'daily':
+        return true
+      case 'workday':
+        return todayDay >= 1 && todayDay <= 5
+      case 'weekly':
+        return todayDay === reminder.customWeekday
+      case 'monthly':
+        return todayDate === reminder.customMonthday
+      case 'yearly':
+        return todayDate === reminder.customMonthday
+      default:
+        return false
+    }
+  })
+})
+
+function getReminderRuleText(reminder) {
+  const ruleMap = {
+    'daily': '每天提醒',
+    'workday': '工作日提醒',
+    'weekly': `每${reminder.recurrenceInterval || 1}周的周${getWeekdayText(reminder.customWeekday)}`,
+    'monthly': `每${reminder.recurrenceInterval || 1}月${reminder.customMonthday}日`,
+    'yearly': `每年${reminder.customMonthday}日`
+  }
+  return ruleMap[reminder.repeatRule] || '单次提醒'
+}
+
+function getWeekdayText(day) {
+  const map = { 0: '日', 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六' }
+  return map[day] || '一'
+}
+
+function deleteReminder(id) {
+  ElMessageBox.confirm('确定删除此提醒吗？', '确认删除', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    deleteDailyReminder(id)
+    ElMessage.success('提醒已删除')
+  }).catch(() => {})
+}
+
+function checkTodayReminders() {
+  if (todayReminders.value.length > 0) {
+    const reminder = todayReminders.value[0]
+    ElNotification({
+      title: '周期提醒',
+      message: reminder.title,
+      type: 'info',
+      duration: 5000
+    })
+  }
+}
 
 const columns = computed(() => {
   return store.todoCategories
@@ -314,6 +440,7 @@ let timer = null
 onMounted(() => {
   updateTime()
   timer = setInterval(updateTime, 1000)
+  checkTodayReminders()
 })
 
 onUnmounted(() => {
@@ -422,9 +549,24 @@ function openAddTodoDialog() {
     category: 'cat1',
     customer: '',
     model: '',
-    deadline: new Date().toISOString().split('T')[0]
+    deadline: new Date().toISOString().split('T')[0],
+    recurrenceRule: 'none',
+    recurrenceInterval: 1,
+    customWeekday: 1,
+    customMonthday: 1
   })
   showTodoDialog.value = true
+}
+
+function onRecurrenceRuleChange(rule) {
+  if (rule === 'weekly') {
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    todoForm.customWeekday = dayOfWeek === 0 ? 7 : dayOfWeek
+  } else if (rule === 'monthly') {
+    const today = new Date()
+    todoForm.customMonthday = today.getDate()
+  }
 }
 
 function confirmTodo() {
@@ -432,16 +574,38 @@ function confirmTodo() {
     alert('请填写待办内容')
     return
   }
-  const customer = store.customers.find(c => c.name === todoForm.customer)
-  const model = store.productModels.find(m => m.name === todoForm.model)
-  addDailyTodoItem({
-    content: todoForm.content,
-    category: todoForm.category,
-    customerId: customer?.id || '',
-    modelId: model?.id || '',
-    deadline: todoForm.deadline,
-    completed: false
-  })
+  
+  if (todoForm.recurrenceRule && todoForm.recurrenceRule !== 'none') {
+    const reminderData = {
+      title: todoForm.content,
+      businessType: 'todo',
+      activateConfigId: '',
+      remindTime: '09:00',
+      repeatRule: todoForm.recurrenceRule,
+      recurrenceInterval: todoForm.recurrenceInterval,
+      customWeekday: todoForm.customWeekday,
+      customMonthday: todoForm.customMonthday,
+      deadline: todoForm.deadline,
+      category: todoForm.category,
+      customer: todoForm.customer,
+      model: todoForm.model,
+      remark: ''
+    }
+    addDailyReminder(reminderData)
+    ElMessage.success('周期性待办提醒创建成功')
+  } else {
+    const customer = store.customers.find(c => c.name === todoForm.customer)
+    const model = store.productModels.find(m => m.name === todoForm.model)
+    addDailyTodoItem({
+      content: todoForm.content,
+      category: todoForm.category,
+      customerId: customer?.id || '',
+      modelId: model?.id || '',
+      deadline: todoForm.deadline,
+      completed: false
+    })
+    ElMessage.success('待办添加成功')
+  }
   showTodoDialog.value = false
 }
 
@@ -1029,6 +1193,70 @@ watch(() => store.certRecords, () => {}, { deep: true })
 
 .legend-dot.cert-danger {
   background: #f56c6c;
+}
+
+.reminder-section {
+  background: #fff;
+  border-radius: 12px;
+  padding: var(--card-padding);
+  margin-top: var(--card-gap-v);
+}
+
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.empty-reminder {
+  text-align: center;
+  color: #909399;
+  padding: 20px;
+  font-size: var(--font-sm);
+}
+
+.reminder-card {
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  border-radius: 8px;
+  padding: 12px;
+  border-left: 4px solid #409EFF;
+}
+
+.reminder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.reminder-title {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: #303133;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reminder-info {
+  display: flex;
+  gap: 12px;
+  font-size: var(--font-xs);
+  color: #606266;
+}
+
+.reminder-rule {
+  background: #ecf5ff;
+  color: #409EFF;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.reminder-meta {
+  color: #909399;
 }
 
 .wb-actions {

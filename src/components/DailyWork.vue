@@ -710,13 +710,85 @@
         <el-button @click="showImportResultDialog = false">关闭</el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog v-model="showReminderDialog" :title="isEditingReminder ? '编辑待办提醒' : '新增待办提醒'" width="550px">
+      <el-form :model="reminderForm" label-width="110px">
+        <el-form-item label="任务标题">
+          <el-input v-model="reminderForm.title" placeholder="请输入待办内容，例如：每月底提交彩盒审核情况" />
+        </el-form-item>
+        <el-form-item label="关联业务">
+          <el-select v-model="reminderForm.businessType" placeholder="请选择">
+            <el-option label="待办" value="todo" />
+            <el-option label="客户" value="customer" />
+            <el-option label="订单" value="order" />
+            <el-option label="产品" value="product" />
+            <el-option label="证书" value="certificate" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关联机型">
+          <el-select v-model="reminderForm.activateConfigId" placeholder="请选择" clearable filterable>
+            <el-option v-for="m in store.productModels" :key="m.id" :label="m.name" :value="m.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="提醒时间">
+          <el-input v-model="reminderForm.remindTime" placeholder="HH:mm" style="width: 120px;" />
+        </el-form-item>
+        <el-form-item label="重复规则">
+          <el-select v-model="reminderForm.repeatRule" @change="onReminderRepeatRuleChange">
+            <el-option label="不重复" value="once" />
+            <el-option label="每天" value="daily" />
+            <el-option label="工作日" value="workday" />
+            <el-option label="每周" value="weekly" />
+            <el-option label="每月" value="monthly" />
+            <el-option label="每年" value="yearly" />
+          </el-select>
+        </el-form-item>
+        <template v-if="reminderForm.repeatRule === 'weekly'">
+          <el-form-item label="重复周几">
+            <el-select v-model="reminderForm.customWeekday">
+              <el-option label="周一" :value="1" />
+              <el-option label="周二" :value="2" />
+              <el-option label="周三" :value="3" />
+              <el-option label="周四" :value="4" />
+              <el-option label="周五" :value="5" />
+              <el-option label="周六" :value="6" />
+              <el-option label="周日" :value="0" />
+            </el-select>
+            <span style="margin-left: 10px;">每</span>
+            <el-input-number v-model="reminderForm.recurrenceInterval" :min="1" :max="52" style="margin-left: 5px;" />
+            <span style="margin-left: 5px;">周</span>
+          </el-form-item>
+        </template>
+        <template v-if="reminderForm.repeatRule === 'monthly'">
+          <el-form-item label="每月第">
+            <el-select v-model="reminderForm.customMonthday">
+              <el-option v-for="i in 31" :key="i" :label="i + '日'" :value="i" />
+            </el-select>
+            <span style="margin-left: 10px;">每</span>
+            <el-input-number v-model="reminderForm.recurrenceInterval" :min="1" :max="24" style="margin-left: 5px;" />
+            <span style="margin-left: 5px;">月</span>
+          </el-form-item>
+        </template>
+        <el-form-item label="截止日期">
+          <el-date-picker v-model="reminderForm.deadline" type="date" style="width: 100%;" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="reminderForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showReminderDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmReminder">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { store, addDailyTodoItem, updateDailyTodoItem, deleteDailyTodoItem, addTag as addTagStore, updateTag, deleteTag, getTags, addTodoCategory, updateTodoCategory, deleteTodoCategory, getTodoCategories, generateId } from '../store.js'
+import { store, addDailyTodoItem, updateDailyTodoItem, deleteDailyTodoItem, addTag as addTagStore, updateTag, deleteTag, getTags, addTodoCategory, updateTodoCategory, deleteTodoCategory, getTodoCategories, generateId, addDailyReminder, updateDailyReminder, deleteDailyReminder } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
 import { sanitizePathSegment } from '../utils/common.js'
@@ -795,6 +867,25 @@ const currentColumnKey = ref('')
 const selectedTag = ref('')
 const currentCategory = ref('cat1')
 
+const reminderPermission = ref(
+  typeof Notification !== 'undefined' ? Notification.permission : 'default'
+)
+const showReminderDialog = ref(false)
+const isEditingReminder = ref(false)
+const reminderForm = reactive({
+  id: '',
+  title: '',
+  businessType: 'todo',
+  activateConfigId: '',
+  remindTime: '09:00',
+  repeatRule: 'once',
+  recurrenceInterval: 1,
+  customWeekday: 1,
+  customMonthday: 1,
+  deadline: '',
+  remark: ''
+})
+
 const visibleCategories = computed(() => {
   return store.todoCategories
     .filter(c => typeof c === 'object' && c !== null && !c.isDefault)
@@ -803,6 +894,10 @@ const visibleCategories = computed(() => {
       name: c.name || '',
       label: c.label || c.name || '未命名分类'
     }))
+})
+
+const filteredDailyReminders = computed(() => {
+  return store.dailyReminders || []
 })
 
 const defaultTabs = [
@@ -1850,6 +1945,158 @@ function exportFailedRecords() {
   const headers = ['行号', '客户姓名', '邮箱', '错误原因']
   const data = importResult.failedRecords.map(r => [r.rowIndex, r.customerName, r.email, r.error])
   exportToExcel('导入失败数据', headers, data)
+}
+
+function handleAddReminder() {
+  isEditingReminder.value = false
+  Object.assign(reminderForm, {
+    id: '',
+    title: '',
+    businessType: 'todo',
+    activateConfigId: '',
+    remindTime: '09:00',
+    repeatRule: 'once',
+    recurrenceInterval: 1,
+    customWeekday: 1,
+    customMonthday: 1,
+    deadline: '',
+    remark: ''
+  })
+  showReminderDialog.value = true
+}
+
+function handleEditReminder(row) {
+  isEditingReminder.value = true
+  Object.assign(reminderForm, {
+    id: row.id,
+    title: row.title,
+    businessType: row.businessType || 'todo',
+    activateConfigId: row.activateConfigId || '',
+    remindTime: row.remindTime || '09:00',
+    repeatRule: row.repeatRule || 'once',
+    recurrenceInterval: row.recurrenceInterval || 1,
+    customWeekday: row.customWeekday || 1,
+    customMonthday: row.customMonthday || 1,
+    deadline: row.deadline || '',
+    remark: row.remark || ''
+  })
+  showReminderDialog.value = true
+}
+
+function handleDeleteReminder(row) {
+  ElMessageBox.confirm(
+    '确定删除该待办提醒吗？此操作不可恢复。',
+    '确认删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    deleteDailyReminder(row.id)
+    ElMessage.success('删除成功')
+  }).catch(() => {})
+}
+
+function markReminderDone(row) {
+  updateDailyReminder(row.id, { status: 'completed' })
+  ElMessage.success('已标记为完成')
+}
+
+function confirmReminder() {
+  if (!reminderForm.title.trim()) {
+    alert('请填写任务标题')
+    return
+  }
+  
+  const data = {
+    title: reminderForm.title,
+    businessType: reminderForm.businessType,
+    activateConfigId: reminderForm.activateConfigId,
+    remindTime: reminderForm.remindTime,
+    repeatRule: reminderForm.repeatRule,
+    recurrenceInterval: reminderForm.recurrenceInterval,
+    customWeekday: reminderForm.customWeekday,
+    customMonthday: reminderForm.customMonthday,
+    deadline: reminderForm.deadline,
+    remark: reminderForm.remark
+  }
+  
+  if (isEditingReminder.value) {
+    updateDailyReminder(reminderForm.id, data)
+    ElMessage.success('修改成功')
+  } else {
+    addDailyReminder(data)
+    ElMessage.success('新增成功')
+  }
+  showReminderDialog.value = false
+}
+
+function onReminderRepeatRuleChange() {
+  if (reminderForm.repeatRule === 'weekly') {
+    if (!reminderForm.customWeekday) reminderForm.customWeekday = 1
+  } else if (reminderForm.repeatRule === 'monthly') {
+    if (!reminderForm.customMonthday) reminderForm.customMonthday = 1
+  }
+}
+
+function requestNotifyPermission() {
+  if (typeof Notification === 'undefined') {
+    alert('您的浏览器不支持桌面通知')
+    return
+  }
+  Notification.requestPermission().then(permission => {
+    reminderPermission.value = permission
+    if (permission === 'granted') {
+      ElMessage.success('桌面通知已开启')
+    } else {
+      ElMessage.warning('桌面通知未开启')
+    }
+  })
+}
+
+function getBusinessLabel(type) {
+  const labels = {
+    todo: '待办',
+    customer: '客户',
+    order: '订单',
+    product: '产品',
+    certificate: '证书',
+    other: '其他'
+  }
+  return labels[type] || type || '-'
+}
+
+function getActivateConfigLabel(id) {
+  if (!id) return '-'
+  const model = store.productModels.find(m => m.id === id || m.name === id)
+  return model ? model.name : id
+}
+
+function getRepeatLabel(rule) {
+  const labels = {
+    once: '不重复',
+    daily: '每天',
+    workday: '工作日',
+    weekly: '每周',
+    monthly: '每月',
+    yearly: '每年'
+  }
+  return labels[rule] || rule || '-'
+}
+
+function exportReminders() {
+  const headers = ['任务标题', '关联业务', '关联机型', '提醒时间', '重复规则', '状态', '备注']
+  const data = filteredDailyReminders.value.map(r => [
+    r.title || '',
+    getBusinessLabel(r.businessType),
+    getActivateConfigLabel(r.activateConfigId),
+    r.remindTime || '',
+    getRepeatLabel(r.repeatRule),
+    r.status === 'completed' ? '已完成' : '待办',
+    r.remark || ''
+  ])
+  exportToExcel('待办提醒清单', headers, data)
 }
 
 watch(() => store.dailyTodos, () => {}, { deep: true })
