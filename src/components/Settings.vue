@@ -501,6 +501,71 @@
         </div>
       </el-tab-pane>
       
+      <el-tab-pane label="Tab 标题管理" name="tab_titles">
+        <div class="tab-content">
+          <div class="setting-section">
+            <h3>Tab 展示标题自定义</h3>
+            <el-alert
+              :title="store.user.role === 'admin' ? '安全规则' : '权限说明'"
+              :type="store.user.role === 'admin' ? 'warning' : 'info'"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 16px;"
+            >
+              <p v-if="store.user.role !== 'admin'">• 您当前为普通用户，仅可查看 Tab 标题，不可编辑</p>
+              <template v-else>
+                <p>• 仅管理员可编辑 Tab 展示名称，普通用户仅查看</p>
+                <p>• <b>key</b> 为系统内部唯一标识，永久固定，禁止修改</p>
+                <p>• <b>pageId</b> 绑定页面 ID，禁止更换</p>
+                <p>• 修改标题后即时生效，刷新页面展示生效，不影响业务数据</p>
+              </template>
+            </el-alert>
+
+            <el-table :data="tabConfigsData" border stripe style="width: 100%;">
+              <el-table-column prop="title" label="Tab 显示名称" min-width="180">
+                <template #default="{ row }">
+                  <el-input 
+                    v-if="editingTabKey === row.key && store.user.role === 'admin'"
+                    v-model="editingTabTitle" 
+                    size="small" 
+                    @keyup.enter="saveTabTitle(row.key)"
+                    @keyup.escape="cancelEditTab"
+                  />
+                  <span v-else>{{ row.title }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="key" label="key（固定只读）" width="140">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info">{{ row.key }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="pageId" label="pageId（固定只读）" width="160">
+                <template #default="{ row }">
+                  <el-tag size="small">{{ row.pageId }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="description" label="模块说明" min-width="200" show-overflow-tooltip />
+              <el-table-column label="操作" width="200" fixed="right" v-if="store.user.role === 'admin'">
+                <template #default="{ row }">
+                  <template v-if="editingTabKey === row.key">
+                    <el-button size="small" type="primary" @click="saveTabTitle(row.key)">保存</el-button>
+                    <el-button size="small" @click="cancelEditTab">取消</el-button>
+                  </template>
+                  <template v-else>
+                    <el-button size="small" @click="startEditTab(row)">编辑标题</el-button>
+                    <el-button size="small" type="info" @click="resetTabTitleRow(row.key)">重置</el-button>
+                  </template>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div style="margin-top: 16px;" v-if="store.user.role === 'admin'">
+              <el-button type="danger" plain @click="resetAllTabTitlesConfirm">重置所有 Tab 标题</el-button>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+      
       <el-tab-pane label="关于" name="about">
         <div class="tab-content">
           <div class="setting-section">
@@ -729,6 +794,8 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
 import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, getLocalModeStatus, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword, createAccount, listAccounts, updateAccount, deleteAccount, resetOtherUserPassword, logRequestDestination } from '../supabase.js'
+import { tabConfigs, updateTabTitle, resetTabTitle, resetAllTabTitles, getAllTabConfigs, DEFAULT_CONFIGS } from '../tabConfig.js'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['config-change'])
@@ -825,6 +892,60 @@ const canCreateBucket = ref(true)
 const bucketListError = ref(false)
 const forceProduction = ref(getForceProduction())
 const buildMode = ref(typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.MODE : 'unknown')
+
+// ===== Tab 标题管理 =====
+const tabConfigsData = computed(() => getAllTabConfigs())
+const editingTabKey = ref('')
+const editingTabTitle = ref('')
+
+function startEditTab(row) {
+  editingTabKey.value = row.key
+  editingTabTitle.value = row.title
+}
+
+function cancelEditTab() {
+  editingTabKey.value = ''
+  editingTabTitle.value = ''
+}
+
+function saveTabTitle(key) {
+  const trimmed = (editingTabTitle.value || '').trim()
+  if (!trimmed) {
+    ElMessage.warning('标题不能为空')
+    return
+  }
+  const ok = updateTabTitle(key, trimmed)
+  if (ok) {
+    ElMessage.success('Tab 标题已更新，刷新页面后导航名称生效')
+    // 实时更新导航中的 label
+    const cfg = tabConfigs.find(c => c.key === key)
+    if (cfg) cfg.title = trimmed
+    cancelEditTab()
+  } else {
+    ElMessage.error('更新失败，请确认管理员权限')
+  }
+}
+
+function resetTabTitleRow(key) {
+  const ok = resetTabTitle(key)
+  if (ok) {
+    ElMessage.success('已重置为默认标题')
+  }
+}
+
+function resetAllTabTitlesConfirm() {
+  ElMessageBox.confirm('确定要重置所有 Tab 标题为默认值吗？', '确认', {
+    confirmButtonText: '确定重置',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    const ok = resetAllTabTitles()
+    if (ok) {
+      ElMessage.success('所有 Tab 标题已重置')
+    }
+  }).catch(() => {})
+}
+
 const supabaseForm = reactive({
   url: '',
   key: '',
