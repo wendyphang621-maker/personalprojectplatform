@@ -1246,10 +1246,40 @@ const mapRecords = ref([
   { id: '3', customerName: 'Jason', location: '澳大利亚悉尼', phone: '+61 xxx', email: 'jason@xxx.com', source: '行业展会', collectDate: '2024-01-17' }
 ])
 
-const letters = ref([
-  { id: '1', subject: '关于产品询价', customerName: 'Hans', email: 'hans@xxx.com', sendDate: '2024-01-15', status: 'replied', content: '尊敬的Hans先生：\n\n您好！感谢您对我司产品的关注...' },
-  { id: '2', subject: '样品寄送确认', customerName: 'Ethan', email: 'ethan@xxx.com', sendDate: '2024-01-16', status: 'sent', content: '尊敬的Ethan先生：\n\n样品已寄出，运单号：SF123456789...' }
-])
+// ===== 开发信存档持久化 =====
+const LETTERS_STORAGE_KEY = 'daily_work_letters'
+
+function loadLettersFromStorage() {
+  try {
+    const saved = localStorage.getItem(LETTERS_STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch (e) {
+    console.warn('[开发信] 加载存档失败:', e)
+  }
+  // 默认示例数据
+  return [
+    { id: '1', subject: '关于产品询价', customerName: 'Hans', email: 'hans@xxx.com', sendDate: '2024-01-15', status: 'replied', content: '尊敬的Hans先生：\n\n您好！感谢您对我司产品的关注...' },
+    { id: '2', subject: '样品寄送确认', customerName: 'Ethan', email: 'ethan@xxx.com', sendDate: '2024-01-16', status: 'sent', content: '尊敬的Ethan先生：\n\n样品已寄出，运单号：SF123456789...' }
+  ]
+}
+
+function saveLettersToStorage() {
+  try {
+    localStorage.setItem(LETTERS_STORAGE_KEY, JSON.stringify(letters.value))
+  } catch (e) {
+    console.warn('[开发信] 保存存档失败:', e)
+  }
+}
+
+const letters = ref(loadLettersFromStorage())
+
+// 监听 letters 变化自动保存
+watch(letters, () => {
+  saveLettersToStorage()
+}, { deep: true })
 
 const certs = ref([
   { id: 'cert1', model: 'E7 Elite', certType: 'CE', certNo: 'CE-2026-E7001', issuingAuthority: 'TUV', startDate: '2026-01-15', expireDate: '2031-01-15', status: 'completed', progress: 100, responsible: '张三', notes: '已完成认证' },
