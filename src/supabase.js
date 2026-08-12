@@ -650,6 +650,9 @@ const TABLE_SCHEMA = {
   },
   product_images: {
     allowedFields: ['id', 'model_id', 'pic_url', 'pic_size', 'pic_type', 'upload_time', 'created_at', 'updated_at']
+  },
+  email_letters: {
+    allowedFields: ['id', 'subject', 'customer_name', 'email', 'send_date', 'status', 'content', 'tags', 'created_at', 'updated_at']
   }
 }
 
@@ -871,6 +874,12 @@ const FIELD_MAPPING = {
     todoId: 'todo_id',
     remindedAt: 'reminded_at',
     createdAt: 'created_at'
+  },
+  email_letters: {
+    customerName: 'customer_name',
+    sendDate: 'send_date',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
   }
 }
 

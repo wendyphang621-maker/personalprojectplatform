@@ -705,7 +705,8 @@ const syncableTables = [
   { name: 'cert_matrix_files', label: '认证文件矩阵-文件项' },
   { name: 'cert_matrix_cells', label: '认证文件矩阵-进度' },
   { name: 'cert_matrix_templates', label: '认证矩阵-自定义模板' },
-  { name: 'cert_matrix_statuses', label: '认证矩阵-自定义状态' }
+  { name: 'cert_matrix_statuses', label: '认证矩阵-自定义状态' },
+  { name: 'email_letters', label: '开发信存档' }
 ]
 
 // 每张表导出/导入使用的字段（camelCase），与 store 中对象字段保持一致
@@ -727,7 +728,8 @@ const TABLE_FIELDS_FALLBACK = {
   cert_matrix_files: ['id', 'name', 'template', 'category', 'order', 'order_no', 'remark', 'is_deleted', 'update_time'],
   cert_matrix_cells: ['id', 'file_id', 'template', 'status', 'remark', 'update_time'],
   cert_matrix_templates: ['id', 'name', 'config', 'remark'],
-  cert_matrix_statuses: ['id', 'name', 'color', 'order', 'order_no', 'remark']
+  cert_matrix_statuses: ['id', 'name', 'color', 'order', 'order_no', 'remark'],
+  email_letters: ['id', 'subject', 'customerName', 'email', 'sendDate', 'status', 'content', 'tags']
 }
 
 // 动态收集一张表所有记录中出现过的字段（保持出现顺序，去重）
@@ -1150,7 +1152,10 @@ async function saveLocalData(tableName, data) {
     'cert_matrix_files': () => store.certMatrixFiles,
     'cert_matrix_cells': () => store.certMatrixCells,
     'cert_matrix_templates': () => store.certMatrixTemplates,
-    'cert_matrix_statuses': () => store.certMatrixStatuses
+    'cert_matrix_statuses': () => store.certMatrixStatuses,
+    'email_letters': () => {
+      try { return JSON.parse(localStorage.getItem('daily_work_letters') || '[]') } catch { return [] }
+    }
   }
 
   const getter = TABLE_STORE_MAP[tableName]
@@ -1163,11 +1168,17 @@ async function saveLocalData(tableName, data) {
       } else {
         list.push(data)
       }
+      // 对于 email_letters，需要同步写回 daily_work_letters
+      if (tableName === 'email_letters') {
+        try {
+          localStorage.setItem('daily_work_letters', JSON.stringify(list))
+        } catch {}
+      }
     }
     return
   }
   
-  const key = `local_${tableName}`
+  const key = tableName === 'email_letters' ? 'daily_work_letters' : `local_${tableName}`
   const existing = JSON.parse(localStorage.getItem(key) || '[]')
   const index = existing.findIndex(item => item.id === data.id)
   if (index >= 0) {
@@ -1196,7 +1207,10 @@ async function getLocalData(tableName) {
     'cert_matrix_files': () => store.certMatrixFiles || [],
     'cert_matrix_cells': () => store.certMatrixCells || [],
     'cert_matrix_templates': () => store.certMatrixTemplates || [],
-    'cert_matrix_statuses': () => store.certMatrixStatuses || []
+    'cert_matrix_statuses': () => store.certMatrixStatuses || [],
+    'email_letters': () => {
+      try { return JSON.parse(localStorage.getItem('daily_work_letters') || '[]') } catch { return [] }
+    }
   }
 
   const getter = TABLE_STORE_MAP[tableName]
