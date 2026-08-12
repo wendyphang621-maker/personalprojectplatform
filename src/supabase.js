@@ -1009,7 +1009,8 @@ export async function syncToSupabase(tableName, data) {
         daily_reminders: 'DR',
         todo_remind_logs: 'TRL',
         sample_deliveries: 'SD',
-        activate_export_configs: 'AEC'
+        activate_export_configs: 'AEC',
+        email_letters: 'EL'
       }
       const prefix = idPrefixMap[tableName] || 'REC'
       // 用短编号：查询现有最大编号 + 1
@@ -1031,7 +1032,7 @@ export async function syncToSupabase(tableName, data) {
     let convertedData = convertDataForSupabase(safeData, tableName)
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    const tablesWithTextId = ['sample_deliveries', 'product_models', 'customers', 'sales_orders', 'suppliers', 'logistics_bills', 'package_sample_follows', 'daily_todos', 'customer_follow_ups', 'customer_payments', 'projects', 'stages', 'tasks', 'cert_matrix_files', 'cert_matrix_cells', 'cert_matrix_templates', 'cert_matrix_statuses', 'cert_records', 'product_certs', 'product_images', 'daily_reminders', 'todo_remind_logs', 'activate_export_configs']
+    const tablesWithTextId = ['sample_deliveries', 'product_models', 'customers', 'sales_orders', 'suppliers', 'logistics_bills', 'package_sample_follows', 'daily_todos', 'customer_follow_ups', 'customer_payments', 'projects', 'stages', 'tasks', 'cert_matrix_files', 'cert_matrix_cells', 'cert_matrix_templates', 'cert_matrix_statuses', 'cert_records', 'product_certs', 'product_images', 'daily_reminders', 'todo_remind_logs', 'activate_export_configs', 'email_letters']
     const preserveId = tablesWithTextId.includes(tableName)
 
     // 自增ID表：id 由数据库 BIGSERIAL 生成，前端不得传入。

@@ -794,6 +794,7 @@ import { store, addDailyTodoItem, updateDailyTodoItem, deleteDailyTodoItem, addT
 import { exportToExcel } from '../utils/excelExport.js'
 import FileUploader from './FileUploader.vue'
 import { sanitizePathSegment } from '../utils/common.js'
+import { syncToSupabase, fetchFromSupabase } from '../supabase.js'
 
 const props = defineProps({
   currentSubPage: {
@@ -1246,8 +1247,10 @@ const mapRecords = ref([
   { id: '3', customerName: 'Jason', location: '澳大利亚悉尼', phone: '+61 xxx', email: 'jason@xxx.com', source: '行业展会', collectDate: '2024-01-17' }
 ])
 
-// ===== 开发信存档持久化 =====
+// ===== 开发信存档持久化（本地 + Supabase 同步） =====
 const LETTERS_STORAGE_KEY = 'daily_work_letters'
+const EMAIL_LETTERS_TABLE = 'email_letters'
+let supabaseSyncing = false // 防止循环触发
 
 function loadLettersFromStorage() {
   try {
@@ -1257,7 +1260,7 @@ function loadLettersFromStorage() {
       if (Array.isArray(parsed)) return parsed
     }
   } catch (e) {
-    console.warn('[开发信] 加载存档失败:', e)
+    console.warn('[开发信] 本地加载存档失败:', e)
   }
   // 默认示例数据
   return [
@@ -1270,15 +1273,81 @@ function saveLettersToStorage() {
   try {
     localStorage.setItem(LETTERS_STORAGE_KEY, JSON.stringify(letters.value))
   } catch (e) {
-    console.warn('[开发信] 保存存档失败:', e)
+    console.warn('[开发信] 本地保存存档失败:', e)
   }
 }
 
 const letters = ref(loadLettersFromStorage())
 
-// 监听 letters 变化自动保存
-watch(letters, () => {
+// 从 Supabase 加载开发信
+async function loadLettersFromSupabase() {
+  if (store.localMode) return // 本地模式跳过
+  try {
+    const { data, error } = await fetchFromSupabase(EMAIL_LETTERS_TABLE)
+    if (error) {
+      console.warn('[开发信] 从Supabase加载失败:', error)
+      return
+    }
+    if (data && Array.isArray(data) && data.length > 0) {
+      // 将数据库字段映射回前端字段
+      const mapped = data.map(row => ({
+        id: row.id,
+        subject: row.subject || '',
+        customerName: row.customer_name || '',
+        email: row.email || '',
+        sendDate: row.send_date || '',
+        status: row.status || 'draft',
+        content: row.content || '',
+        tags: row.tags ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags) : []
+      }))
+      supabaseSyncing = true
+      letters.value = mapped
+      saveLettersToStorage()
+      console.log(`[开发信] 从Supabase加载 ${mapped.length} 条记录`)
+    }
+  } catch (e) {
+    console.warn('[开发信] 从Supabase加载异常:', e)
+  }
+}
+
+// 同步单条记录到 Supabase
+async function syncLetterToSupabase(letter) {
+  if (store.localMode) return
+  try {
+    const data = {
+      id: letter.id,
+      subject: letter.subject || '',
+      customer_name: letter.customerName || '',
+      email: letter.email || '',
+      send_date: letter.sendDate || '',
+      status: letter.status || 'draft',
+      content: letter.content || '',
+      tags: letter.tags ? JSON.stringify(letter.tags) : '[]'
+    }
+    const result = await syncToSupabase(EMAIL_LETTERS_TABLE, data)
+    if (!result.success) {
+      console.warn('[开发信] 同步到Supabase失败:', result.error)
+    }
+  } catch (e) {
+    console.warn('[开发信] 同步到Supabase异常:', e)
+  }
+}
+
+// 监听 letters 变化自动保存（本地 + Supabase）
+watch(letters, (newVal, oldVal) => {
   saveLettersToStorage()
+  if (!supabaseSyncing && !store.localMode) {
+    // 逐条同步变更的记录
+    if (Array.isArray(newVal) && Array.isArray(oldVal)) {
+      newVal.forEach(letter => {
+        const oldLetter = oldVal.find(l => l.id === letter.id)
+        if (!oldLetter || JSON.stringify(letter) !== JSON.stringify(oldLetter)) {
+          syncLetterToSupabase(letter)
+        }
+      })
+    }
+  }
+  supabaseSyncing = false
 }, { deep: true })
 
 const certs = ref([
@@ -2150,6 +2219,11 @@ function exportReminders() {
 }
 
 watch(() => store.dailyTodos, () => {}, { deep: true })
+
+// 组件挂载时从 Supabase 加载开发信
+onMounted(async () => {
+  await loadLettersFromSupabase()
+})
 </script>
 
 <style scoped>
