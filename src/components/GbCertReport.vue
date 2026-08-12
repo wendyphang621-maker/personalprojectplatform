@@ -3,7 +3,7 @@
     <!-- 标题栏 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title">GB 认证进度报表</h2>
+        <h2 class="page-title">{{ getTabTitle('gb_cert') }}</h2>
         <span class="page-subtitle">共 {{ filteredReports.length }} / {{ reports.length }} 条</span>
       </div>
       <div class="header-actions">
@@ -178,7 +178,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { store, saveToLocalStorage } from '../store.js'
 import { exportToExcel, exportToCSV } from '../utils/excelExport.js'
-import { isAdmin } from '../tabConfig.js'
+import { isAdmin, getTabTitle } from '../tabConfig.js'
 
 // 常量配置
 const statusOptions = ['规划中', '资料准备中', '测试中', '审核中', '已完成', '延期']

@@ -3,7 +3,7 @@
     <!-- 标题栏 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title">彩盒设计迭代管理</h2>
+        <h2 class="page-title">{{ getTabTitle('box_iter') }}</h2>
         <span class="page-subtitle">共 {{ filteredRecords.length }} / {{ records.length }} 条迭代记录</span>
       </div>
       <div class="header-actions">
@@ -271,7 +271,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { store, saveToLocalStorage } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { isAdmin } from '../tabConfig.js'
+import { isAdmin, getTabTitle } from '../tabConfig.js'
 
 // 常量配置
 const STORAGE_KEY_RECORDS = 'box_iter_records'

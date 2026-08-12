@@ -3,7 +3,7 @@
     <!-- 标题栏 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title">样机寄送跟进台账</h2>
+        <h2 class="page-title">{{ getTabTitle('sample_log') }}</h2>
         <span class="page-subtitle">共 {{ filteredRecords.length }} / {{ records.length }} 条记录</span>
       </div>
       <div class="header-actions">
@@ -330,7 +330,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { store, saveToLocalStorage } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { isAdmin } from '../tabConfig.js'
+import { isAdmin, getTabTitle } from '../tabConfig.js'
 
 // ===== 常量配置 =====
 const STORAGE_KEY_RECORDS = 'sample_log_records'
