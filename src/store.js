@@ -644,7 +644,10 @@ function migrateSampleDeliveries(data) {
     data.dailyReminders = data.dailyReminders.map(r => {
       const fixed = { ...r }
       if (fixed.recurrenceInterval === undefined) fixed.recurrenceInterval = 1
-      if (fixed.customWeekday === undefined) fixed.customWeekday = 1
+      // 迁移 customWeekday (单个值) 为 customWeekdays (数组)
+      if (fixed.customWeekdays === undefined) {
+        fixed.customWeekdays = fixed.customWeekday !== undefined ? [fixed.customWeekday] : [1]
+      }
       if (fixed.customMonthday === undefined) fixed.customMonthday = 1
       if (fixed.deadline === undefined) fixed.deadline = ''
       if (fixed.category === undefined) fixed.category = ''
@@ -2872,7 +2875,7 @@ export function addDailyReminder(data) {
     remindTime: data.remindTime || '09:00',
     repeatRule: data.repeatRule || 'once',
     recurrenceInterval: data.recurrenceInterval || 1,
-    customWeekday: data.customWeekday ?? 1,
+    customWeekdays: data.customWeekdays || (data.customWeekday !== undefined ? [data.customWeekday] : [1]),
     customMonthday: data.customMonthday ?? 1,
     deadline: data.deadline || '',
     category: data.category || '',

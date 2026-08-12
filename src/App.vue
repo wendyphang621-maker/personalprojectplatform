@@ -183,6 +183,18 @@
               </svg>
               推送
             </el-button>
+            <el-button 
+              size="small" 
+              @click="openBackupDialog"
+              title="导出/导入数据文件（Excel/CSV）"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+              </svg>
+              备份
+            </el-button>
           </div>
         </div>
         <div class="logout-btn" @click="handleLogout">
@@ -500,6 +512,165 @@
         <el-button type="primary" @click="showSyncResultDialog = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 数据备份与迁移对话框 -->
+    <el-dialog v-model="showBackupDialog" title="数据备份与迁移" width="720px" :close-on-click-modal="false">
+      <el-tabs v-model="backupActiveTab">
+        <!-- 导出 Tab -->
+        <el-tab-pane label="导出数据" name="export">
+          <el-alert
+            title="导出说明"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          >
+            <p>• <b>Excel 多 sheet</b>：所有选中的表合并到一个 Excel 文件，每张表一个工作表</p>
+            <p>• <b>CSV</b>：每张表单独下载一个 CSV 文件（UTF-8 编码，含 BOM）</p>
+            <p>• 导出的文件可直接用于导入到系统或 Supabase</p>
+          </el-alert>
+
+          <el-form-item label="导出格式">
+            <el-radio-group v-model="exportFormat">
+              <el-radio value="excel">Excel（多 sheet 合并）</el-radio>
+              <el-radio value="csv">CSV（逐个下载）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="选择表">
+            <el-checkbox 
+              :model-value="backupSelectAll" 
+              @change="handleBackupSelectAll"
+            >
+              全选
+            </el-checkbox>
+          </el-form-item>
+          <div class="sync-table-list" style="max-height: 240px; overflow-y: auto;">
+            <el-checkbox
+              v-for="table in syncableTables"
+              :key="table.name"
+              v-model="backupSelectedTables"
+              :label="table.name"
+              :value="table.name"
+            >
+              {{ table.label }}
+            </el-checkbox>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+            <el-button 
+              type="primary" 
+              :loading="backupLoading"
+              :disabled="backupSelectedTables.length === 0"
+              @click="exportSelectedTables"
+            >
+              一键导出所选表
+            </el-button>
+            <span style="color: #909399; font-size: 12px; line-height: 32px;">
+              已选 {{ backupSelectedTables.length }} / {{ syncableTables.length }} 张表
+            </span>
+          </div>
+
+          <el-divider content-position="left">单表快速导出</el-divider>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div 
+              v-for="table in syncableTables.slice(0, 6)" 
+              :key="table.name"
+              style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: #f5f7fa; border-radius: 4px;"
+            >
+              <span>{{ table.label }}</span>
+              <div>
+                <el-button size="small" @click="exportSingleTable(table.name, 'excel')">Excel</el-button>
+                <el-button size="small" @click="exportSingleTable(table.name, 'csv')">CSV</el-button>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <!-- 导入 Tab -->
+        <el-tab-pane label="导入数据" name="import">
+          <el-alert
+            title="导入说明"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          >
+            <p>• <b>导入到系统</b>：数据写入浏览器本地存储，覆盖同 ID 记录</p>
+            <p>• <b>导入到 Supabase</b>：数据推送到云端数据库（需先连接云端）</p>
+            <p>• <b>单表导入</b>：选择目标表，文件第一个 sheet 导入到该表</p>
+            <p>• <b>多表导入</b>：按 sheet 名匹配表名（使用导出时的中文名）</p>
+          </el-alert>
+
+          <el-form label-width="100px">
+            <el-form-item label="导入目标">
+              <el-radio-group v-model="importTarget">
+                <el-radio value="system">系统（本地存储）</el-radio>
+                <el-radio value="supabase">Supabase（云端）</el-radio>
+              </el-radio-group>
+            </el-form-item>
+
+            <el-form-item label="导入模式">
+              <el-radio-group v-model="importMode">
+                <el-radio value="single">单表导入</el-radio>
+                <el-radio value="all">多表导入（按 sheet 名匹配）</el-radio>
+              </el-radio-group>
+            </el-form-item>
+
+            <el-form-item label="目标表" v-if="importMode === 'single'">
+              <el-select v-model="importTableName" placeholder="选择目标表" style="width: 100%;">
+                <el-option 
+                  v-for="table in syncableTables" 
+                  :key="table.name" 
+                  :label="table.label" 
+                  :value="table.name" 
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+
+          <div style="margin-top: 16px; display: flex; gap: 12px; align-items: center;">
+            <el-button 
+              type="primary" 
+              :loading="backupLoading"
+              @click="triggerImportFile"
+            >
+              选择文件并导入
+            </el-button>
+            <span style="color: #909399; font-size: 12px;">
+              支持 .xlsx / .xls / .csv 格式
+            </span>
+            <input 
+              ref="importFileInput" 
+              type="file" 
+              accept=".xlsx,.xls,.csv" 
+              style="display: none;" 
+              @change="handleImportFile"
+            />
+          </div>
+
+          <!-- 导入结果 -->
+          <div v-if="importResultDetails.length > 0" style="margin-top: 20px;">
+            <el-divider content-position="left">导入结果</el-divider>
+            <div v-for="r in importResultDetails" :key="r.tableName" style="margin-bottom: 12px;">
+              <div style="display: flex; gap: 12px; margin-bottom: 6px;">
+                <el-tag size="small">{{ r.label }}</el-tag>
+                <el-tag type="success" size="small">成功: {{ r.success }}</el-tag>
+                <el-tag type="danger" size="small" v-if="r.fail > 0">失败: {{ r.fail }}</el-tag>
+              </div>
+              <el-table v-if="r.errors && r.errors.length > 0" :data="r.errors" border size="small" max-height="160">
+                <el-table-column prop="id" label="记录ID" width="160" show-overflow-tooltip />
+                <el-table-column prop="error" label="错误原因" show-overflow-tooltip />
+              </el-table>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <el-button @click="showBackupDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -509,6 +680,7 @@ import { store, authStore, addProject, parseAIText, addTask, isReadOnly, logout,
 import { setLocalMode, getLocalMode, saveEncryptedConfig, getSavedConfig, clearSavedConfig, testSupabaseConnection, clearTempConfig, syncToSupabase, fetchFromSupabase } from './supabase.js'
 import { isLocalhost, isIncognitoMode } from './utils/crypto.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { exportTableData, exportMultiSheetExcel, parseImportFile } from './utils/excelExport.js'
 
 let pendingNavKey = null
 let pendingSubKey = null
@@ -533,6 +705,54 @@ const syncableTables = [
   { name: 'cert_matrix_statuses', label: '认证矩阵-自定义状态' }
 ]
 
+// 每张表导出/导入使用的字段（camelCase），与 store 中对象字段保持一致
+// 注：实际导出时会动态收集数据中所有出现过的字段，这里仅作为没有数据时的兜底
+const TABLE_FIELDS_FALLBACK = {
+  customers: ['id', 'name', 'group', 'country', 'region', 'company', 'email', 'phone', 'address', 'model', 'firstContactDate', 'sampleCount', 'notes', 'remark'],
+  sample_deliveries: ['id', 'customer_name', 'model', 'area', 'logistics', 'tracking_no', 'send_date', 'qty', 'freight', 'status', 'remark'],
+  package_sample_follows: ['id', 'projectName', 'internalModel', 'businessType', 'followStatus', 'sendDate', 'receiveDate', 'nextFollowDate', 'followLogs', 'remark'],
+  product_models: ['id', 'name', 'model_name', 'chip', 'screen', 'certifications', 'supplier_name', 'render_image_path', 'remark'],
+  product_certs: ['id', 'model_id', 'model_name', 'model', 'cert_type', 'cert_no', 'issue_date', 'expire_date', 'cert_file_path', 'organization', 'remark'],
+  product_images: ['id', 'model_id', 'model_name', 'image_path', 'image_type', 'remark'],
+  logistics_bills: ['id', 'logisticsNo', 'logisticsCompany', 'customerName', 'country', 'freightAmount', 'freightForwarder', 'paymentStatus', 'writeOffDate', 'remark'],
+  customer_payments: ['id', 'customer_id', 'customer_name', 'order_no', 'order_date', 'product_name', 'spec_model', 'quantity', 'unit_price', 'order_amount', 'delivery_date', 'payment_batch', 'payment_type', 'payment_date', 'payment_amount', 'payment_method', 'arrival_status', 'remark'],
+  sales_orders: ['id', 'customer_id', 'customer_name', 'model', 'quantity', 'order_date', 'logistics_no', 'status', 'amount', 'currency', 'bulk_freight', 'order_type', 'payment_status', 'order_no', 'remark'],
+  customer_groups: ['id', 'group_name', 'name', 'remark'],
+  delivery_allocations: ['id', 'order_id', 'order_no', 'customer_name', 'model', 'quantity', 'allocated_qty', 'delivery_date', 'status', 'remark'],
+  delivery_schedules: ['id', 'order_id', 'order_no', 'customer_name', 'model', 'quantity', 'scheduled_date', 'delivery_date', 'status', 'remark'],
+  activate_export_configs: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'model_name', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'remark'],
+  cert_matrix_files: ['id', 'name', 'template', 'category', 'order', 'order_no', 'remark', 'is_deleted', 'update_time'],
+  cert_matrix_cells: ['id', 'file_id', 'template', 'status', 'remark', 'update_time'],
+  cert_matrix_templates: ['id', 'name', 'config', 'remark'],
+  cert_matrix_statuses: ['id', 'name', 'color', 'order', 'order_no', 'remark']
+}
+
+// 动态收集一张表所有记录中出现过的字段（保持出现顺序，去重）
+function collectTableFields(tableName, records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return TABLE_FIELDS_FALLBACK[tableName] || ['id']
+  }
+  const seen = new Set()
+  const fields = []
+  for (const r of records) {
+    if (r && typeof r === 'object') {
+      for (const k of Object.keys(r)) {
+        if (!seen.has(k)) {
+          seen.add(k)
+          fields.push(k)
+        }
+      }
+    }
+  }
+  // 确保 id 在首位
+  const idIdx = fields.indexOf('id')
+  if (idIdx > 0) {
+    fields.splice(idIdx, 1)
+    fields.unshift('id')
+  }
+  return fields.length > 0 ? fields : (TABLE_FIELDS_FALLBACK[tableName] || ['id'])
+}
+
 const showSyncDialog = ref(false)
 const syncDirection = ref('pull')
 const selectedTables = ref([])
@@ -540,6 +760,258 @@ const selectAllTables = ref(false)
 const syncLoading = ref(false)
 const showSyncResultDialog = ref(false)
 const syncResultDetails = ref([])
+
+// ===== 数据备份与迁移 =====
+const showBackupDialog = ref(false)
+const backupActiveTab = ref('export')
+const backupSelectedTables = ref([])  // 导出选中的表
+const backupSelectAll = ref(false)
+const exportFormat = ref('excel')     // 'excel' | 'csv'
+const backupLoading = ref(false)
+const importTarget = ref('system')    // 'system' | 'supabase'
+const importMode = ref('single')      // 'single' | 'all'
+const importTableName = ref('')       // 单表导入时选中的表
+const importFileInput = ref(null)
+const importResultDetails = ref([])
+
+function openBackupDialog() {
+  backupActiveTab.value = 'export'
+  backupSelectedTables.value = []
+  backupSelectAll.value = false
+  exportFormat.value = 'excel'
+  importTarget.value = 'system'
+  importMode.value = 'single'
+  importTableName.value = syncableTables[0]?.name || ''
+  importResultDetails.value = []
+  showBackupDialog.value = true
+}
+
+function handleBackupSelectAll(val) {
+  backupSelectedTables.value = val ? syncableTables.map(t => t.name) : []
+  backupSelectAll.value = val
+}
+
+// 表名 → sheet 名映射（Excel sheet 名最长 31 字符）
+function tableToSheetName(tableName) {
+  const item = syncableTables.find(t => t.name === tableName)
+  return (item?.label || tableName).substring(0, 31)
+}
+
+// sheet 名 → 表名映射（导入时按 sheet 名匹配）
+function sheetNameToTable(sheetName) {
+  // 优先精确匹配 label
+  const byLabel = syncableTables.find(t => t.label === sheetName)
+  if (byLabel) return byLabel.name
+  // 再匹配截断后的 label
+  const byTruncLabel = syncableTables.find(t => t.label.substring(0, 31) === sheetName)
+  if (byTruncLabel) return byTruncLabel.name
+  // 最后匹配表名
+  const byName = syncableTables.find(t => t.name === sheetName)
+  if (byName) return byName.name
+  return null
+}
+
+// 将对象序列化为字符串（用于导出 attachments 等复杂字段）
+function flattenValue(v) {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'object') {
+    try { return JSON.stringify(v) } catch { return String(v) }
+  }
+  return v
+}
+
+// 导出单个表
+async function exportSingleTable(tableName, format) {
+  try {
+    const data = await getLocalData(tableName)
+    if (!data || data.length === 0) {
+      ElMessage.warning(`「${syncableTables.find(t => t.name === tableName)?.label || tableName}」没有数据可导出`)
+      return
+    }
+    const fields = collectTableFields(tableName, data)
+    const headers = fields
+    const rows = data.map(item => fields.map(f => flattenValue(item[f])))
+    await exportTableData(tableName, headers, rows, format)
+    ElMessage.success(`已导出 ${data.length} 条记录（${format === 'csv' ? 'CSV' : 'Excel'}）`)
+  } catch (e) {
+    console.error('[导出单表] 失败:', e)
+    ElMessage.error(`导出失败：${e.message || e}`)
+  }
+}
+
+// 一键导出所有选中的表（Excel 多 sheet）
+async function exportSelectedTables() {
+  if (backupSelectedTables.value.length === 0) {
+    ElMessage.warning('请至少选择一张表')
+    return
+  }
+  backupLoading.value = true
+  try {
+    if (exportFormat.value === 'csv') {
+      // CSV 不支持多 sheet，逐个下载
+      for (const tableName of backupSelectedTables.value) {
+        await exportSingleTable(tableName, 'csv')
+      }
+      ElMessage.success(`已导出 ${backupSelectedTables.value.length} 张表（CSV）`)
+    } else {
+      // Excel 多 sheet
+      const sheets = []
+      let totalCount = 0
+      for (const tableName of backupSelectedTables.value) {
+        const data = await getLocalData(tableName)
+        if (!data || data.length === 0) continue
+        const fields = collectTableFields(tableName, data)
+        const rows = data.map(item => fields.map(f => flattenValue(item[f])))
+        sheets.push({
+          sheetName: tableToSheetName(tableName),
+          headers: fields,
+          data: rows
+        })
+        totalCount += data.length
+      }
+      if (sheets.length === 0) {
+        ElMessage.warning('所选表均无数据可导出')
+        backupLoading.value = false
+        return
+      }
+      await exportMultiSheetExcel(sheets, '数据备份')
+      ElMessage.success(`已导出 ${sheets.length} 张表，共 ${totalCount} 条记录`)
+    }
+  } catch (e) {
+    console.error('[一键导出] 失败:', e)
+    ElMessage.error(`导出失败：${e.message || e}`)
+  } finally {
+    backupLoading.value = false
+  }
+}
+
+// 触发文件选择
+function triggerImportFile() {
+  importFileInput.value?.click()
+}
+
+// 处理文件导入
+async function handleImportFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  backupLoading.value = true
+  importResultDetails.value = []
+  
+  try {
+    const sheets = await parseImportFile(file)
+    if (sheets.length === 0) {
+      ElMessage.warning('文件中没有数据')
+      return
+    }
+
+    // 根据导入模式决定处理哪些 sheet
+    let sheetsToProcess = sheets
+    if (importMode.value === 'single') {
+      // 单表导入：取第一个 sheet
+      sheetsToProcess = sheets.slice(0, 1)
+    }
+
+    const targetLabel = importTarget.value === 'supabase' ? 'Supabase' : '系统'
+    ElMessage.info(`开始导入到${targetLabel}，共 ${sheetsToProcess.length} 张表...`)
+
+    for (const sheet of sheetsToProcess) {
+      const tableName = importMode.value === 'single' 
+        ? importTableName.value 
+        : sheetNameToTable(sheet.sheetName)
+      
+      const tableLabel = syncableTables.find(t => t.name === tableName)?.label || sheet.sheetName
+      const result = { tableName: tableName || sheet.sheetName, label: tableLabel, success: 0, fail: 0, skip: 0, errors: [] }
+
+      if (!tableName) {
+        result.errors.push({ id: '-', error: `未识别出表名（sheet: ${sheet.sheetName}）` })
+        importResultDetails.value.push(result)
+        continue
+      }
+
+      if (!sheet.headers || sheet.headers.length === 0 || sheet.rows.length === 0) {
+        result.skip = 0
+        result.errors.push({ id: '-', error: '空表' })
+        importResultDetails.value.push(result)
+        continue
+      }
+
+      // 将二维数组转回对象数组
+      const records = sheet.rows.map(row => {
+        const obj = {}
+        sheet.headers.forEach((h, i) => {
+          obj[h] = row[i] ?? ''
+        })
+        return obj
+      })
+
+      // 确保 id 存在
+      for (const r of records) {
+        if (!r.id) {
+          r.id = 'imp' + Date.now() + Math.random().toString(36).slice(2, 8)
+        }
+      }
+
+      if (importTarget.value === 'supabase') {
+        // 导入到 Supabase
+        const { getSupabase } = await import('./supabase.js')
+        const client = await getSupabase()
+        if (!client) {
+          result.errors.push({ id: '-', error: 'Supabase 未配置' })
+          importResultDetails.value.push(result)
+          continue
+        }
+        for (const r of records) {
+          try {
+            const syncRes = await syncToSupabase(tableName, r)
+            if (syncRes.success) result.success++
+            else {
+              result.fail++
+              result.errors.push({ id: r.id, error: syncRes.error || '推送失败' })
+            }
+          } catch (e) {
+            result.fail++
+            result.errors.push({ id: r.id, error: e.message || '异常' })
+          }
+        }
+      } else {
+        // 导入到系统（本地 store）
+        for (const r of records) {
+          try {
+            await saveLocalData(tableName, r)
+            result.success++
+          } catch (e) {
+            result.fail++
+            result.errors.push({ id: r.id, error: e.message || '保存失败' })
+          }
+        }
+      }
+
+      importResultDetails.value.push(result)
+    }
+
+    // 持久化本地数据
+    if (importTarget.value === 'system') {
+      persistData()
+    }
+
+    const totalSuccess = importResultDetails.value.reduce((s, r) => s + r.success, 0)
+    const totalFail = importResultDetails.value.reduce((s, r) => s + r.fail, 0)
+    
+    if (totalFail > 0) {
+      ElMessage.warning(`导入完成：成功 ${totalSuccess} 条，失败 ${totalFail} 条`)
+    } else {
+      ElMessage.success(`导入完成！共 ${totalSuccess} 条记录`)
+    }
+  } catch (e) {
+    console.error('[导入] 失败:', e)
+    ElMessage.error(`导入失败：${e.message || e}`)
+  } finally {
+    backupLoading.value = false
+    // 清空 input，允许重复选择同一文件
+    if (event.target) event.target.value = ''
+  }
+}
 
 function openSyncDialog(direction) {
   syncDirection.value = direction
@@ -558,6 +1030,15 @@ async function executeSync() {
   syncResultDetails.value = []
   
   try {
+    // 先检查 Supabase 配置是否可用
+    const { getSupabase } = await import('./supabase.js')
+    const client = await getSupabase()
+    if (!client) {
+      ElMessage.error('Supabase 未配置或连接失败，请先在【设置→云端存储】中配置')
+      syncLoading.value = false
+      return
+    }
+    
     ElMessage.info(`开始${syncDirection.value === 'push' ? '推送' : '拉取'} ${tables.length} 张表...`)
     
     for (const tableName of tables) {

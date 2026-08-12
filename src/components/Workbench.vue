@@ -301,7 +301,7 @@
         </el-form-item>
         <template v-if="todoForm.recurrenceRule === 'weekly'">
           <el-form-item label="重复周几">
-            <el-select v-model="todoForm.customWeekday">
+            <el-select v-model="todoForm.customWeekdays" multiple collapse-tags collapse-tags-tooltip placeholder="请选择重复的星期" style="width: 100%;">
               <el-option label="周一" :value="1" />
               <el-option label="周二" :value="2" />
               <el-option label="周三" :value="3" />
@@ -354,7 +354,7 @@ const todoForm = reactive({
   deadline: new Date().toISOString().split('T')[0],
   recurrenceRule: 'none',
   recurrenceInterval: 1,
-  customWeekday: 1,
+  customWeekdays: [1],
   customMonthday: 1
 })
 
@@ -374,7 +374,8 @@ const todayReminders = computed(() => {
       case 'workday':
         return todayDay >= 1 && todayDay <= 5
       case 'weekly':
-        return todayDay === reminder.customWeekday
+        const weekDays = reminder.customWeekdays || (reminder.customWeekday !== undefined ? [reminder.customWeekday] : [])
+        return weekDays.includes(todayDay)
       case 'monthly':
         return todayDate === reminder.customMonthday
       case 'yearly':
@@ -389,11 +390,19 @@ function getReminderRuleText(reminder) {
   const ruleMap = {
     'daily': '每天提醒',
     'workday': '工作日提醒',
-    'weekly': `每${reminder.recurrenceInterval || 1}周的周${getWeekdayText(reminder.customWeekday)}`,
+    'weekly': getWeeklyRuleText(reminder),
     'monthly': `每${reminder.recurrenceInterval || 1}月${reminder.customMonthday}日`,
     'yearly': `每年${reminder.customMonthday}日`
   }
   return ruleMap[reminder.repeatRule] || '单次提醒'
+}
+
+function getWeeklyRuleText(reminder) {
+  const weekDays = reminder.customWeekdays || (reminder.customWeekday !== undefined ? [reminder.customWeekday] : [])
+  const interval = reminder.recurrenceInterval || 1
+  if (weekDays.length === 0) return `每${interval}周`
+  const names = weekDays.map(d => getWeekdayText(d)).join('、')
+  return `每${interval}周的周${names}`
 }
 
 function getWeekdayText(day) {
@@ -552,7 +561,7 @@ function openAddTodoDialog() {
     deadline: new Date().toISOString().split('T')[0],
     recurrenceRule: 'none',
     recurrenceInterval: 1,
-    customWeekday: 1,
+    customWeekdays: [1],
     customMonthday: 1
   })
   showTodoDialog.value = true
@@ -562,7 +571,7 @@ function onRecurrenceRuleChange(rule) {
   if (rule === 'weekly') {
     const today = new Date()
     const dayOfWeek = today.getDay()
-    todoForm.customWeekday = dayOfWeek === 0 ? 7 : dayOfWeek
+    todoForm.customWeekdays = [dayOfWeek]
   } else if (rule === 'monthly') {
     const today = new Date()
     todoForm.customMonthday = today.getDate()
@@ -583,7 +592,7 @@ function confirmTodo() {
       remindTime: '09:00',
       repeatRule: todoForm.recurrenceRule,
       recurrenceInterval: todoForm.recurrenceInterval,
-      customWeekday: todoForm.customWeekday,
+      customWeekdays: todoForm.customWeekdays,
       customMonthday: todoForm.customMonthday,
       deadline: todoForm.deadline,
       category: todoForm.category,

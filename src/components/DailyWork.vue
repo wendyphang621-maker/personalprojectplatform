@@ -314,8 +314,8 @@
                 <template #default="{ row }">{{ getActivateConfigLabel(row.activateConfigId) }}</template>
               </el-table-column>
               <el-table-column prop="remindTime" label="提醒时间" width="90" />
-              <el-table-column label="重复规则" width="90">
-                <template #default="{ row }">{{ getRepeatLabel(row.repeatRule) }}</template>
+              <el-table-column label="重复规则" width="160">
+                <template #default="{ row }">{{ getRepeatLabel(row.repeatRule, row) }}</template>
               </el-table-column>
               <el-table-column label="任务状态" width="90">
                 <template #default="{ row }">
@@ -746,7 +746,7 @@
         </el-form-item>
         <template v-if="reminderForm.repeatRule === 'weekly'">
           <el-form-item label="重复周几">
-            <el-select v-model="reminderForm.customWeekday">
+            <el-select v-model="reminderForm.customWeekdays" multiple collapse-tags collapse-tags-tooltip placeholder="请选择重复的星期" style="width: 100%;">
               <el-option label="周一" :value="1" />
               <el-option label="周二" :value="2" />
               <el-option label="周三" :value="3" />
@@ -755,9 +755,11 @@
               <el-option label="周六" :value="6" />
               <el-option label="周日" :value="0" />
             </el-select>
-            <span style="margin-left: 10px;">每</span>
-            <el-input-number v-model="reminderForm.recurrenceInterval" :min="1" :max="52" style="margin-left: 5px;" />
-            <span style="margin-left: 5px;">周</span>
+          </el-form-item>
+          <el-form-item label="">
+            <span style="margin-right: 10px;">每</span>
+            <el-input-number v-model="reminderForm.recurrenceInterval" :min="1" :max="52" />
+            <span style="margin-left: 5px;">周重复一次</span>
           </el-form-item>
         </template>
         <template v-if="reminderForm.repeatRule === 'monthly'">
@@ -880,7 +882,7 @@ const reminderForm = reactive({
   remindTime: '09:00',
   repeatRule: 'once',
   recurrenceInterval: 1,
-  customWeekday: 1,
+  customWeekdays: [1],
   customMonthday: 1,
   deadline: '',
   remark: ''
@@ -1957,7 +1959,7 @@ function handleAddReminder() {
     remindTime: '09:00',
     repeatRule: 'once',
     recurrenceInterval: 1,
-    customWeekday: 1,
+    customWeekdays: [1],
     customMonthday: 1,
     deadline: '',
     remark: ''
@@ -1967,6 +1969,7 @@ function handleAddReminder() {
 
 function handleEditReminder(row) {
   isEditingReminder.value = true
+  const weekDays = row.customWeekdays || (row.customWeekday !== undefined ? [row.customWeekday] : [1])
   Object.assign(reminderForm, {
     id: row.id,
     title: row.title,
@@ -1975,7 +1978,7 @@ function handleEditReminder(row) {
     remindTime: row.remindTime || '09:00',
     repeatRule: row.repeatRule || 'once',
     recurrenceInterval: row.recurrenceInterval || 1,
-    customWeekday: row.customWeekday || 1,
+    customWeekdays: weekDays,
     customMonthday: row.customMonthday || 1,
     deadline: row.deadline || '',
     remark: row.remark || ''
@@ -2016,7 +2019,7 @@ function confirmReminder() {
     remindTime: reminderForm.remindTime,
     repeatRule: reminderForm.repeatRule,
     recurrenceInterval: reminderForm.recurrenceInterval,
-    customWeekday: reminderForm.customWeekday,
+    customWeekdays: reminderForm.customWeekdays,
     customMonthday: reminderForm.customMonthday,
     deadline: reminderForm.deadline,
     remark: reminderForm.remark
@@ -2034,7 +2037,9 @@ function confirmReminder() {
 
 function onReminderRepeatRuleChange() {
   if (reminderForm.repeatRule === 'weekly') {
-    if (!reminderForm.customWeekday) reminderForm.customWeekday = 1
+    if (!reminderForm.customWeekdays || reminderForm.customWeekdays.length === 0) {
+      reminderForm.customWeekdays = [1]
+    }
   } else if (reminderForm.repeatRule === 'monthly') {
     if (!reminderForm.customMonthday) reminderForm.customMonthday = 1
   }
@@ -2073,7 +2078,7 @@ function getActivateConfigLabel(id) {
   return model ? model.name : id
 }
 
-function getRepeatLabel(rule) {
+function getRepeatLabel(rule, row) {
   const labels = {
     once: '不重复',
     daily: '每天',
@@ -2081,6 +2086,21 @@ function getRepeatLabel(rule) {
     weekly: '每周',
     monthly: '每月',
     yearly: '每年'
+  }
+  if (rule === 'weekly' && row) {
+    const weekDays = row.customWeekdays || (row.customWeekday !== undefined ? [row.customWeekday] : [])
+    const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    if (weekDays.length > 0) {
+      const names = weekDays.map(d => weekNames[d] || ('周' + d)).join('、')
+      const interval = row.recurrenceInterval || 1
+      return `每${interval}周的${names}`
+    }
+    return '每周'
+  }
+  if (rule === 'monthly' && row) {
+    const interval = row.recurrenceInterval || 1
+    const day = row.customMonthday || 1
+    return `每${interval}月${day}日`
   }
   return labels[rule] || rule || '-'
 }
@@ -2092,7 +2112,7 @@ function exportReminders() {
     getBusinessLabel(r.businessType),
     getActivateConfigLabel(r.activateConfigId),
     r.remindTime || '',
-    getRepeatLabel(r.repeatRule),
+    getRepeatLabel(r.repeatRule, r),
     r.status === 'completed' ? '已完成' : '待办',
     r.remark || ''
   ])

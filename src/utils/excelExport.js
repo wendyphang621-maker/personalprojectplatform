@@ -702,7 +702,6 @@ export function handleExportError(error, tableName) {
     config: 'Supabase 未配置，请先配置云端连接信息',
     network: '网络连接失败，请检查网络后重试'
   }
-  
   let message = errorMessages[error?.type] || error?.message || '未知错误'
   
   console.error(`[导出错误] ${tableName}:`, error)
@@ -724,4 +723,113 @@ function getSuggestion(errorType) {
     network: '请检查网络连接，确保能访问 Supabase 服务'
   }
   return suggestions[errorType] || '请稍后重试，如果问题持续请联系管理员'
+}
+
+/**
+ * 导出多 sheet Excel 文件（一键导出所有表用）
+ * @param {Array} sheets - [{ sheetName, headers, data }]
+ * @param {String} filename - 文件名（不含扩展名）
+ */
+export async function exportMultiSheetExcel(sheets, filename = '数据备份') {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = '项目工作台'
+  workbook.created = new Date()
+
+  for (const sheet of sheets) {
+    const { sheetName, headers, data } = sheet
+    const worksheet = workbook.addWorksheet(sheetName.substring(0, 31))
+
+    const headerRow = worksheet.addRow(headers)
+    headerRow.font = { name: '微软雅黑', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF409EFF' } }
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' }
+    headerRow.height = 24
+
+    data.forEach(rowData => {
+      const row = worksheet.addRow(rowData)
+      row.font = { name: '微软雅黑', size: 11 }
+      row.alignment = { vertical: 'middle' }
+    })
+
+    headers.forEach((_, index) => {
+      const maxLen = Math.max(
+        String(headers[index] || '').length * 1.5,
+        ...data.map(r => {
+          const v = r[index]
+          return v === null || v === undefined ? 0 : String(v).length
+        }),
+        10
+      )
+      worksheet.getColumn(index + 1).width = Math.min(maxLen + 2, 50)
+    })
+
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: data.length + 1, column: headers.length }
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * 导出单表数据（统一入口，支持 Excel / CSV）
+ * @param {String} tableName - 表名（用于默认文件名）
+ * @param {Array} headers - 表头
+ * @param {Array} data - 二维数组数据
+ * @param {String} format - 'excel' | 'csv'
+ */
+export async function exportTableData(tableName, headers, data, format = 'excel') {
+  if (format === 'csv') {
+    exportToCSV(headers, data, tableName)
+    return
+  }
+  await exportToExcel(tableName, headers, data)
+}
+
+/**
+ * 解析导入文件（Excel 多 sheet 或 CSV）
+ * @param {File} file
+ * @returns {Promise<Array>} sheets - [{ sheetName, headers, rows }]
+ */
+export async function parseImportFile(file) {
+  const XLSX = await import('xlsx')
+  const buf = await file.arrayBuffer()
+
+  // CSV 文件
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    const text = new TextDecoder('utf-8').decode(buf)
+    const workbook = XLSX.read(text, { type: 'string' })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    const aoa = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' })
+    if (aoa.length === 0) return [{ sheetName: file.name.replace(/\.csv$/i, ''), headers: [], rows: [] }]
+    const headers = aoa[0].map(h => String(h))
+    const rows = aoa.slice(1).map(r => headers.map((_, i) => r[i] ?? ''))
+    return [{ sheetName: file.name.replace(/\.csv$/i, ''), headers, rows }]
+  }
+
+  // Excel 文件
+  const workbook = XLSX.read(buf, { type: 'array' })
+  const sheets = []
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+    if (aoa.length === 0) {
+      sheets.push({ sheetName, headers: [], rows: [] })
+      continue
+    }
+    const headers = aoa[0].map(h => String(h))
+    const rows = aoa.slice(1).map(r => headers.map((_, i) => r[i] ?? ''))
+    sheets.push({ sheetName, headers, rows })
+  }
+  return sheets
 }

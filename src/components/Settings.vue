@@ -912,6 +912,8 @@ async function testConnection() {
   const result = await testSupabaseConnection(supabaseForm.url, supabaseForm.key, bucketName)
   if (result.success) {
     supabaseConnected.value = true
+    // 连接成功后自动保存配置并切换到云端模式
+    saveConfig(true)
     
     if (result.bucketListError) {
       bucketListError.value = true
@@ -963,8 +965,12 @@ function saveConfig(silent = false) {
     bucket: bucketName
   }
   supabaseConnected.value = true
+  
+  // 保存成功后自动切换到云端模式
+  setLocalMode(false)
+  
   if (!silent) {
-    alert('配置已保存到本机，刷新页面不会丢失')
+    alert('配置已保存，已切换到云端模式，现在可以同步数据了')
   }
 }
 

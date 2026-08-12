@@ -15,13 +15,50 @@ async function loadLocalConfig() {
     if (isLocalhost()) {
       const configStr = localStorage.getItem(LOCAL_CONFIG_KEY)
       if (configStr) {
-        localConfig = JSON.parse(configStr)
+        try {
+          localConfig = JSON.parse(configStr)
+        } catch (e) {
+          console.warn('[配置] 配置解析失败，使用默认配置')
+          localConfig = null
+        }
+      }
+      
+      // 配置迁移：确保有正确的 supabase 结构
+      if (localConfig) {
+        let migrated = false
+        if (!localConfig.supabase) {
+          localConfig.supabase = {}
+          migrated = true
+        }
+        if (localConfig.supabase.SUPABASE_URL === undefined) {
+          // 尝试从旧结构或 flat key 迁移
+          const oldUrl = localConfig.url || localStorage.getItem('supabase_url') || ''
+          localConfig.supabase.SUPABASE_URL = oldUrl
+          migrated = true
+        }
+        if (localConfig.supabase.SUPABASE_KEY === undefined) {
+          const oldKey = localConfig.key || localStorage.getItem('supabase_key') || ''
+          localConfig.supabase.SUPABASE_KEY = oldKey
+          migrated = true
+        }
+        if (localConfig.supabase.BUCKET_NAME === undefined) {
+          localConfig.supabase.BUCKET_NAME = localStorage.getItem('supabase_bucket') || 'customer_light_files'
+          migrated = true
+        }
+        if (!localConfig.app) {
+          localConfig.app = { localMode: true, themeColor: '#409EFF', language: 'zh-CN' }
+          migrated = true
+        }
+        if (migrated) {
+          console.log('[配置] 检测到旧配置结构，已自动迁移')
+          saveLocalConfig()
+        }
       } else {
         localConfig = {
           supabase: {
-            SUPABASE_URL: '',
-            SUPABASE_KEY: '',
-            BUCKET_NAME: 'customer_light_files'
+            SUPABASE_URL: localStorage.getItem('supabase_url') || '',
+            SUPABASE_KEY: localStorage.getItem('supabase_key') || '',
+            BUCKET_NAME: localStorage.getItem('supabase_bucket') || 'customer_light_files'
           },
           app: {
             localMode: true,
@@ -39,27 +76,36 @@ async function loadLocalConfig() {
       try {
         const decrypted = await decrypt(encryptedConfig)
         localConfig = JSON.parse(decrypted)
-      } catch (decryptError) {
-        console.warn('[配置] 解密失败，使用默认配置')
-        localConfig = {
-          supabase: {
-            SUPABASE_URL: '',
-            SUPABASE_KEY: '',
-            BUCKET_NAME: 'customer_light_files'
-          },
-          app: {
-            localMode: true,
-            themeColor: '#409EFF',
-            language: 'zh-CN'
+        // 配置迁移
+        if (localConfig) {
+          if (!localConfig.supabase) {
+            localConfig.supabase = {}
+          }
+          if (localConfig.supabase.SUPABASE_URL === undefined) {
+            localConfig.supabase.SUPABASE_URL = ''
+          }
+          if (localConfig.supabase.SUPABASE_KEY === undefined) {
+            localConfig.supabase.SUPABASE_KEY = ''
+          }
+          if (localConfig.supabase.BUCKET_NAME === undefined) {
+            localConfig.supabase.BUCKET_NAME = 'customer_light_files'
+          }
+          if (!localConfig.app) {
+            localConfig.app = { localMode: true, themeColor: '#409EFF', language: 'zh-CN' }
           }
         }
+      } catch (decryptError) {
+        console.warn('[配置] 解密失败，使用默认配置')
+        localConfig = null
       }
-    } else {
+    }
+    
+    if (!localConfig) {
       localConfig = {
         supabase: {
-          SUPABASE_URL: '',
-          SUPABASE_KEY: '',
-          BUCKET_NAME: 'customer_light_files'
+          SUPABASE_URL: localStorage.getItem('supabase_url') || '',
+          SUPABASE_KEY: localStorage.getItem('supabase_key') || '',
+          BUCKET_NAME: localStorage.getItem('supabase_bucket') || 'customer_light_files'
         },
         app: {
           localMode: true,
@@ -291,6 +337,38 @@ export async function getSupabase() {
   let supabaseKey = ''
   let configSource = ''
   
+  // 辅助函数：尝试从多个来源获取配置
+  function tryGetConfig() {
+    // 1. 从 localConfig 对象读取（通过 setLocalConfigValue 设置的值）
+    const urlFromConfig = getLocalConfigValue('supabase.SUPABASE_URL')
+    const keyFromConfig = getLocalConfigValue('supabase.SUPABASE_KEY')
+    if (urlFromConfig && keyFromConfig) {
+      return { url: urlFromConfig, key: keyFromConfig, source: '本机私有配置' }
+    }
+    // 2. 从 flat localStorage keys 读取（直接保存的值）
+    const urlFromStorage = localStorage.getItem('supabase_url')
+    const keyFromStorage = localStorage.getItem('supabase_key')
+    if (urlFromStorage && keyFromStorage) {
+      // 回写到 localConfig 以保持一致
+      setLocalConfigValue('supabase.SUPABASE_URL', urlFromStorage)
+      setLocalConfigValue('supabase.SUPABASE_KEY', keyFromStorage)
+      return { url: urlFromStorage, key: keyFromStorage, source: '用户临时缓存' }
+    }
+    // 3. 从旧的 localConfig 结构读取（兼容旧版本）
+    if (localConfig?.url && localConfig?.key) {
+      setLocalConfigValue('supabase.SUPABASE_URL', localConfig.url)
+      setLocalConfigValue('supabase.SUPABASE_KEY', localConfig.key)
+      return { url: localConfig.url, key: localConfig.key, source: '旧版配置迁移' }
+    }
+    // 4. 从环境变量读取
+    const envUrl = import.meta.env.VITE_DEV_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_PROD_SUPABASE_URL || ''
+    const envKey = import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || ''
+    if (envUrl && envKey) {
+      return { url: envUrl, key: envKey, source: '环境变量' }
+    }
+    return null
+  }
+  
   if (isLocalhost()) {
     logEnvironmentInfo()
     
@@ -303,12 +381,16 @@ export async function getSupabase() {
       supabaseKey = import.meta.env.VITE_PROD_SUPABASE_ANON_KEY || getLocalConfigValue('supabase.SUPABASE_KEY') || ''
       configSource = '线上正式配置'
     } else {
-      supabaseUrl = getLocalConfigValue('supabase.SUPABASE_URL') || localStorage.getItem('supabase_url') || import.meta.env.VITE_DEV_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || ''
-      supabaseKey = getLocalConfigValue('supabase.SUPABASE_KEY') || localStorage.getItem('supabase_key') || import.meta.env.VITE_DEV_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-      configSource = getLocalConfigValue('supabase.SUPABASE_URL') ? '本机私有配置' : (localStorage.getItem('supabase_url') ? '用户临时缓存' : '开发环境变量')
+      // 开发环境：尝试所有可能的配置来源
+      const found = tryGetConfig()
+      if (found) {
+        supabaseUrl = found.url
+        supabaseKey = found.key
+        configSource = found.source
+      }
     }
     
-    console.log(`[Supabase] 配置来源: ${configSource}`)
+    console.log(`[Supabase] 配置来源: ${configSource || '未找到'}`)
     console.log(`[Supabase] URL: ${supabaseUrl ? supabaseUrl : '(未配置)'}`)
     console.log(`[Supabase] KEY: ${supabaseKey ? '已配置(隐藏)' : '(未配置)'}`)
   } else {
@@ -318,13 +400,22 @@ export async function getSupabase() {
       supabaseUrl = savedConfig.url
       supabaseKey = savedConfig.key
       configSource = savedConfig.source === 'temp' ? '临时内存配置' : '加密存储配置'
+    } else {
+      // 非 localhost 环境下也尝试从 flat keys 读取
+      const urlFromStorage = localStorage.getItem('supabase_url')
+      const keyFromStorage = localStorage.getItem('supabase_key')
+      if (urlFromStorage && keyFromStorage) {
+        supabaseUrl = urlFromStorage
+        supabaseKey = keyFromStorage
+        configSource = '本地缓存(未加密)'
+      }
     }
   }
   
   if (!supabaseUrl || !supabaseKey) {
-    if (isLocalhost()) {
-      console.error('[Supabase] 配置不完整，无法连接，系统自动切换到本地模式')
-    }
+    console.error('[Supabase] 配置不完整，无法连接，系统自动切换到本地模式')
+    console.error(`[Supabase] 诊断信息: isLocalhost=${isLocalhost()}, configSource=${configSource}`)
+    console.error(`[Supabase] localConfig存在: ${!!localConfig}, localConfig.supabase: ${JSON.stringify(localConfig?.supabase)}`)
     return null
   }
   
@@ -400,15 +491,42 @@ export function saveSupabaseConfig(url, key, bucketName = 'customer_light_files'
 }
 
 export function getSupabaseConfig() {
-  const localUrl = getLocalConfigValue('supabase.SUPABASE_URL')
-  const localKey = getLocalConfigValue('supabase.SUPABASE_KEY')
+  // 优先从 localConfig 对象读取
+  let localUrl = getLocalConfigValue('supabase.SUPABASE_URL')
+  let localKey = getLocalConfigValue('supabase.SUPABASE_KEY')
+  
+  // 如果 localConfig 中没有，尝试从 flat keys 读取并回写
+  if (!localUrl) {
+    const flatUrl = localStorage.getItem('supabase_url')
+    if (flatUrl) {
+      localUrl = flatUrl
+      setLocalConfigValue('supabase.SUPABASE_URL', flatUrl)
+    }
+  }
+  if (!localKey) {
+    const flatKey = localStorage.getItem('supabase_key')
+    if (flatKey) {
+      localKey = flatKey
+      setLocalConfigValue('supabase.SUPABASE_KEY', flatKey)
+    }
+  }
+  
+  // 兼容旧版 localConfig 结构
+  if (!localUrl && localConfig?.url) {
+    localUrl = localConfig.url
+    setLocalConfigValue('supabase.SUPABASE_URL', localUrl)
+  }
+  if (!localKey && localConfig?.key) {
+    localKey = localConfig.key
+    setLocalConfigValue('supabase.SUPABASE_KEY', localKey)
+  }
+  
   const rawBucket = getLocalConfigValue('supabase.BUCKET_NAME') || localStorage.getItem('supabase_bucket') || ''
-  // 自动修正旧的错误桶名 customer-files → customer_light_files
   const localBucket = normalizeBucketName(rawBucket) || 'customer_light_files'
 
   return {
-    url: localUrl || localStorage.getItem('supabase_url') || import.meta.env.VITE_SUPABASE_URL || '',
-    key: localKey || localStorage.getItem('supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+    url: localUrl || import.meta.env.VITE_SUPABASE_URL || '',
+    key: localKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '',
     bucket: localBucket
   }
 }
@@ -525,7 +643,7 @@ const TABLE_SCHEMA = {
     allowedFields: ['id', 'customer', 'update_frequency', 'receive_email', 'model', 'model_name', 'country', 'software_version', 'need_imei', 'need_filter', 'export_table_name', 'fota_source', 'enabled', 'created_at', 'updated_at']
   },
   daily_reminders: {
-    allowedFields: ['id', 'title', 'content', 'business_type', 'activate_config_id', 'remind_time', 'time_value', 'repeat_rule', 'recurrence_interval', 'custom_weekday', 'custom_monthday', 'deadline', 'category', 'customer', 'model', 'status', 'enabled', 'last_triggered_at', 'remark', 'created_at', 'updated_at']
+    allowedFields: ['id', 'title', 'content', 'business_type', 'activate_config_id', 'remind_time', 'time_value', 'repeat_rule', 'recurrence_interval', 'custom_weekdays', 'custom_monthday', 'deadline', 'category', 'customer', 'model', 'status', 'enabled', 'last_triggered_at', 'remark', 'created_at', 'updated_at']
   },
   todo_remind_logs: {
     allowedFields: ['id', 'remind_date', 'todo_id', 'reminded_at', 'created_at', 'updated_at']
@@ -743,7 +861,7 @@ const FIELD_MAPPING = {
     remindTime: 'remind_time',
     repeatRule: 'repeat_rule',
     recurrenceInterval: 'recurrence_interval',
-    customWeekday: 'custom_weekday',
+    customWeekdays: 'custom_weekdays',
     customMonthday: 'custom_monthday',
     lastTriggeredAt: 'last_triggered_at',
     createdAt: 'created_at',
@@ -793,8 +911,13 @@ function convertDataForSupabase(data, tableName) {
     converted = {}
     for (const [key, value] of Object.entries(data)) {
       const newKey = convertFieldName(key, mapping, 'toSnake')
-      console.log(`[convertDataForSupabase] 字段 ${key} -> ${newKey}, 值:`, value)
-      converted[newKey] = value
+      // 将数组转换为 JSON 字符串存储
+      let newValue = value
+      if (Array.isArray(value)) {
+        newValue = JSON.stringify(value)
+      }
+      console.log(`[convertDataForSupabase] 字段 ${key} -> ${newKey}, 值:`, newValue)
+      converted[newKey] = newValue
     }
   }
   
@@ -834,7 +957,19 @@ function convertDataFromSupabase(data, tableName) {
   const result = {}
   for (const [key, value] of Object.entries(data)) {
     const newKey = convertFieldName(key, mapping, 'toCamel')
-    result[newKey] = value
+    // 尝试将 JSON 字符串解析为数组
+    let newValue = value
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value)
+        if (Array.isArray(parsed)) {
+          newValue = parsed
+        }
+      } catch (e) {
+        // 不是 JSON 格式，保持原值
+      }
+    }
+    result[newKey] = newValue
   }
   return result
 }
