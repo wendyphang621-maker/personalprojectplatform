@@ -248,6 +248,9 @@ const defaultData = {
     { id: 'cat5', name: 'color_box', label: '彩盒审核待处理' },
     { id: 'cat6', name: 'sample_earphone', label: '样机寄送-耳机' },
     { id: 'cat7', name: 'sample_phone', label: '样机寄送-手机' },
+    { id: 'cat_biz', name: 'biz_order', label: '商务订单跟进' },
+    { id: 'cat_sa', name: 'sales_assist', label: '销售助理事务' },
+    { id: 'cat_express', name: 'sample_express', label: '样机与快递寄送' },
     { id: 'cat_default', name: 'other', label: '其他待办', isDefault: true }
   ],
   

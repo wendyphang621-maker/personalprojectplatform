@@ -30,6 +30,7 @@
               </div>
               <div class="tag-filter-actions">
                 <el-button size="small" type="primary" @click="openCategoryManageDialog">管理分类</el-button>
+                <el-button size="small" type="success" @click="openBatchPresetDialog">批量预设</el-button>
               </div>
             </div>
             <div class="category-scroll-container">
@@ -470,6 +471,64 @@
       </div>
       <template #footer>
         <el-button @click="showCategoryManageDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+    
+    <el-dialog v-model="showBatchPresetDialog" title="批量预设待办" width="720px" :close-on-click-modal="false">
+      <div class="batch-preset-content">
+        <div class="batch-preset-toolbar">
+          <el-button size="small" @click="selectAllPresets">全选</el-button>
+          <el-button size="small" @click="clearAllPresets">清空</el-button>
+          <el-button size="small" type="warning" @click="resetPresetsToDefault">恢复默认</el-button>
+          <el-button size="small" type="primary" @click="showPresetEditor = !showPresetEditor">
+            {{ showPresetEditor ? '完成编辑' : '自定义编辑预设' }}
+          </el-button>
+        </div>
+        
+        <div v-if="!showPresetEditor">
+          <div v-for="group in presetGroups" :key="group.key" class="preset-group">
+            <div class="preset-group-header">
+              <el-checkbox 
+                :model-value="isGroupAllChecked(group)" 
+                :indeterminate="isGroupIndeterminate(group)"
+                @change="toggleGroupAll(group, $event)"
+              >
+                <span class="preset-group-title">{{ group.title }}</span>
+                <span class="preset-group-count">（{{ group.items.length }}项）</span>
+              </el-checkbox>
+            </div>
+            <div class="preset-items">
+              <div v-for="item in group.items" :key="item.id" class="preset-item">
+                <el-checkbox v-model="item.checked">{{ item.content }}</el-checkbox>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div v-else class="preset-editor">
+          <div class="preset-editor-tip">
+            可编辑预设内容（每行一条，留空则删除）。修改后点击"保存预设"。
+          </div>
+          <div v-for="group in editablePresets" :key="group.key" class="preset-edit-group">
+            <div class="preset-edit-group-title">{{ group.title }}</div>
+            <el-input
+              v-model="group.text"
+              type="textarea"
+              :rows="Math.max(3, group.text.split('\n').length)"
+              placeholder="每行一条待办内容"
+            />
+          </div>
+          <div class="preset-editor-actions">
+            <el-button type="primary" @click="saveEditablePresets">保存预设</el-button>
+            <el-button @click="showPresetEditor = false">取消</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showBatchPresetDialog = false">取消</el-button>
+        <el-button type="primary" @click="importSelectedPresets" :disabled="showPresetEditor">
+          导入所选（{{ selectedPresetCount }}项）
+        </el-button>
       </template>
     </el-dialog>
     
@@ -936,6 +995,171 @@ const isAddButtonDisabled = computed(() => {
 
 const showCategoryManageDialog = ref(false)
 const editingCategory = ref(null)
+
+// ===== 批量预设待办 =====
+const PRESET_STORAGE_KEY = 'daily_work_batch_presets'
+const showBatchPresetDialog = ref(false)
+const showPresetEditor = ref(false)
+
+const DEFAULT_PRESET_GROUPS = [
+  {
+    key: 'biz_order',
+    title: '商务订单跟进',
+    categoryId: 'cat_biz',
+    items: [
+      '订单汇总整理',
+      '收款核对确认',
+      '索要货物入仓信息',
+      '备货进度核对',
+      '向客户同步出货计划',
+      '订单售后对接',
+      '订单资料归档'
+    ]
+  },
+  {
+    key: 'sales_assist',
+    title: '销售助理事务',
+    categoryId: 'cat_sa',
+    items: [
+      '客户到访行程协调',
+      '外贸行业资讯查看',
+      '客户邮件、消息回复',
+      '跨部门项目跟进',
+      '英语、西班牙语学习打卡',
+      '当日工作复盘'
+    ]
+  },
+  {
+    key: 'sample_express',
+    title: '样机与快递寄送',
+    categoryId: 'cat_express',
+    items: [
+      '收件地址、联系人确认',
+      '样机物料清点核对',
+      '打包发货',
+      '快递单号登记',
+      '整理电子版装箱清单发给客户',
+      '跟踪物流状态'
+    ]
+  }
+]
+
+function loadPresetGroups() {
+  try {
+    const saved = localStorage.getItem(PRESET_STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(g => ({
+          ...g,
+          items: (g.items || []).map(content => ({ id: g.key + '_' + content, content, checked: false }))
+        }))
+      }
+    }
+  } catch (e) {
+    console.warn('[批量预设] 加载失败:', e)
+  }
+  return DEFAULT_PRESET_GROUPS.map(g => ({
+    key: g.key,
+    title: g.title,
+    categoryId: g.categoryId,
+    items: g.items.map(content => ({ id: g.key + '_' + content, content, checked: false }))
+  }))
+}
+
+const presetGroups = ref(loadPresetGroups())
+
+const editablePresets = ref([])
+
+const selectedPresetCount = computed(() => {
+  return presetGroups.value.reduce((sum, g) => sum + g.items.filter(i => i.checked).length, 0)
+})
+
+function isGroupAllChecked(group) {
+  return group.items.length > 0 && group.items.every(i => i.checked)
+}
+
+function isGroupIndeterminate(group) {
+  const checked = group.items.filter(i => i.checked).length
+  return checked > 0 && checked < group.items.length
+}
+
+function toggleGroupAll(group, checked) {
+  group.items.forEach(i => { i.checked = checked })
+}
+
+function selectAllPresets() {
+  presetGroups.value.forEach(g => g.items.forEach(i => { i.checked = true }))
+}
+
+function clearAllPresets() {
+  presetGroups.value.forEach(g => g.items.forEach(i => { i.checked = false }))
+}
+
+function resetPresetsToDefault() {
+  if (!confirm('确定恢复默认预设？自定义修改将丢失。')) return
+  localStorage.removeItem(PRESET_STORAGE_KEY)
+  presetGroups.value = loadPresetGroups()
+  ElMessage.success('已恢复默认预设')
+}
+
+function openBatchPresetDialog() {
+  showPresetEditor.value = false
+  showBatchPresetDialog.value = true
+}
+
+function saveEditablePresets() {
+  const newGroups = editablePresets.value.map(g => {
+    const items = g.text.split('\n').map(s => s.trim()).filter(Boolean)
+    return {
+      key: g.key,
+      title: g.title,
+      categoryId: g.categoryId,
+      items: items.map(content => ({ id: g.key + '_' + content, content, checked: false }))
+    }
+  })
+  presetGroups.value = newGroups
+  try {
+    const toSave = newGroups.map(g => ({
+      key: g.key,
+      title: g.title,
+      categoryId: g.categoryId,
+      items: g.items.map(i => i.content)
+    }))
+    localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(toSave))
+  } catch (e) {
+    console.warn('[批量预设] 保存失败:', e)
+  }
+  showPresetEditor.value = false
+  ElMessage.success('预设已保存')
+}
+
+watch(showPresetEditor, (val) => {
+  if (val) {
+    editablePresets.value = presetGroups.value.map(g => ({
+      key: g.key,
+      title: g.title,
+      categoryId: g.categoryId,
+      text: g.items.map(i => i.content).join('\n')
+    }))
+  }
+})
+
+function importSelectedPresets() {
+  let count = 0
+  presetGroups.value.forEach(group => {
+    group.items.filter(i => i.checked).forEach(item => {
+      addDailyTodoItem({
+        content: item.content,
+        category: group.categoryId
+      })
+      count++
+    })
+  })
+  ElMessage.success(`已导入 ${count} 条待办`)
+  presetGroups.value.forEach(g => g.items.forEach(i => { i.checked = false }))
+  showBatchPresetDialog.value = false
+}
 
 const categoryForm = reactive({
   label: ''
@@ -2362,6 +2586,78 @@ onMounted(async () => {
   padding-left: 10px;
   border-left: 1px solid #ebeef5;
   margin-left: 5px;
+}
+
+.batch-preset-content {
+  padding: 10px;
+}
+
+.batch-preset-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.preset-group {
+  margin-bottom: 18px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.preset-group-header {
+  margin-bottom: 8px;
+}
+
+.preset-group-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #303133;
+}
+
+.preset-group-count {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 5px;
+}
+
+.preset-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 12px;
+  padding-left: 24px;
+}
+
+.preset-item {
+  font-size: 14px;
+}
+
+.preset-editor {
+  padding: 10px;
+}
+
+.preset-editor-tip {
+  color: #909399;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.preset-edit-group {
+  margin-bottom: 15px;
+}
+
+.preset-edit-group-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #303133;
+}
+
+.preset-editor-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .category-manage-content {
