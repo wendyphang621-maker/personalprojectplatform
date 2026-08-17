@@ -33,89 +33,61 @@
                 <el-button size="small" type="success" @click="openBatchPresetDialog">批量预设</el-button>
               </div>
             </div>
-            <div class="category-scroll-container">
-              <div class="category-scroll-wrapper">
-                <div 
-                  v-for="category in visibleCategories" 
-                  :key="category.id"
-                  :class="['category-tab', { active: currentCategory === category.id }]"
-                  @click="currentCategory = category.id"
-                >
-                  <span class="category-label">{{ category.label }}</span>
-                  <span class="category-count">{{ getColumnTodos(category.id).length }}</span>
-                  <el-button size="small" @click.stop="openAddTodo(category.id)">+</el-button>
-                </div>
+            <div class="todo-filter-bar">
+              <div class="filter-group">
+                <span class="filter-label">分类：</span>
+                <el-select v-model="filterCategory" placeholder="全部分类" clearable size="small" style="width: 160px;">
+                  <el-option label="全部" value="" />
+                  <el-option v-for="cat in visibleCategories" :key="cat.id" :label="cat.label" :value="cat.id" />
+                </el-select>
               </div>
+              <div class="filter-group">
+                <span class="filter-label">状态：</span>
+                <el-select v-model="filterStatus" placeholder="全部状态" clearable size="small" style="width: 120px;">
+                  <el-option label="全部" value="" />
+                  <el-option label="未完成" value="pending" />
+                  <el-option label="已完成" value="completed" />
+                </el-select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">关键词：</span>
+                <el-input v-model="filterKeyword" placeholder="搜索待办内容" clearable size="small" style="width: 200px;" />
+              </div>
+              <el-button size="small" type="primary" @click="openAddTodo(currentCategory || 'cat1')">+ 新增待办</el-button>
             </div>
-            <div v-for="category in visibleCategories" :key="category.id" class="kanban-column">
-              <div class="column-header">
-                <span class="column-title">{{ category.label }}</span>
-                <span class="column-count">{{ getColumnTodos(category.id).length }}</span>
-                <el-button size="small" @click="openAddTodo(category.id)">+</el-button>
+            <div class="todo-list-vertical">
+              <div v-if="filteredAllTodos.length === 0" class="empty-todo-list">
+                <el-empty description="暂无待办事项" />
               </div>
-              <div class="todo-list" @dragover.prevent @drop="handleDrop($event, category.id)">
-                <div 
-                  v-for="todo in getColumnTodos(category.id)" 
-                  :key="todo.id" 
-                  class="todo-card"
-                  :class="{ completed: todo.completed }"
-                  draggable="true"
-                  @dragstart="handleDragStart($event, todo)"
-                  @click="openEditTodo(todo)"
-                >
-                  <div class="todo-header">
-                    <span class="todo-category">{{ getCategoryLabel(todo.category) }}</span>
-                    <div class="todo-actions">
-                      <el-button 
-                        size="small" 
-                        :type="todo.completed ? 'default' : 'success'" 
-                        @click.stop="toggleTodo(todo)"
-                      >
-                        {{ todo.completed ? '已完成' : '完成' }}
-                      </el-button>
-                    </div>
+              <div 
+                v-for="todo in filteredAllTodos" 
+                :key="todo.id" 
+                class="todo-row"
+                :class="{ completed: todo.completed }"
+                @click="openEditTodo(todo)"
+              >
+                <div class="todo-row-checkbox">
+                  <el-checkbox 
+                    :model-value="todo.completed" 
+                    @click.stop 
+                    @change="toggleTodo(todo)"
+                  />
+                </div>
+                <div class="todo-row-main">
+                  <div class="todo-row-content" :class="{ completed: todo.completed }">{{ todo.content }}</div>
+                  <div class="todo-row-meta">
+                    <el-tag size="small" :type="getCategoryTagType(todo.category)">{{ getCategoryLabel(todo.category) }}</el-tag>
+                    <span v-if="todo.customer" class="todo-row-meta-item">👤 {{ todo.customer }}</span>
+                    <span v-if="todo.model" class="todo-row-meta-item">📱 {{ todo.model }}</span>
+                    <span v-if="todo.deadline" :class="getDeadlineClass(todo)" class="todo-row-meta-item">📅 {{ todo.deadline }}</span>
+                    <span v-for="tagId in (todo.tags || [])" :key="tagId" class="todo-row-tag" :style="{ backgroundColor: getTagColor(tagId) + '20', color: getTagColor(tagId) }">{{ getTagLabel(tagId) }}</span>
                   </div>
-                  <div class="todo-content" :class="{ completed: todo.completed }">
-                    {{ todo.content }}
-                  </div>
-                  <div v-if="todo.tags && todo.tags.length > 0" class="todo-tags">
-                    <span 
-                      v-for="tagId in todo.tags" 
-                      :key="tagId" 
-                      class="todo-tag"
-                      :style="{ backgroundColor: getTagColor(tagId) + '20', color: getTagColor(tagId) }"
-                    >
-                      {{ getTagLabel(tagId) }}
-                    </span>
-                  </div>
-                  <div class="todo-meta">
-                    <span v-if="todo.customer" class="meta-item">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                        <circle cx="12" cy="7" r="4"/>
-                      </svg>
-                      {{ todo.customer }}
-                    </span>
-                    <span v-if="todo.model" class="meta-item">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                        <line x1="12" y1="18" x2="12" y2="12"/>
-                        <line x1="12" y1="8" x2="12.01" y2="8"/>
-                      </svg>
-                      {{ todo.model }}
-                    </span>
-                  </div>
-                  <div class="todo-footer">
-                    <span :class="getDeadlineClass(todo)">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                        <line x1="16" y1="2" x2="16" y2="6"/>
-                        <line x1="8" y1="2" x2="8" y2="6"/>
-                        <line x1="3" y1="10" x2="21" y2="10"/>
-                      </svg>
-                      {{ todo.deadline }}
-                    </span>
-                  </div>
+                </div>
+                <div class="todo-row-actions">
+                  <el-button size="small" :type="todo.completed ? 'default' : 'success'" @click.stop="toggleTodo(todo)">
+                    {{ todo.completed ? '已完成' : '完成' }}
+                  </el-button>
+                  <el-button size="small" type="danger" @click.stop="deleteTodoItem(todo)">删除</el-button>
                 </div>
               </div>
             </div>
@@ -996,6 +968,43 @@ const isAddButtonDisabled = computed(() => {
 
 const showCategoryManageDialog = ref(false)
 const editingCategory = ref(null)
+
+// ===== 竖向列表筛选 =====
+const filterCategory = ref('')
+const filterStatus = ref('')
+const filterKeyword = ref('')
+
+const filteredAllTodos = computed(() => {
+  let list = store.dailyTodos || []
+  if (filterCategory.value) {
+    list = list.filter(t => t.category === filterCategory.value)
+  }
+  if (filterStatus.value === 'completed') {
+    list = list.filter(t => t.completed)
+  } else if (filterStatus.value === 'pending') {
+    list = list.filter(t => !t.completed)
+  }
+  if (filterKeyword.value.trim()) {
+    const kw = filterKeyword.value.trim().toLowerCase()
+    list = list.filter(t => (t.content || '').toLowerCase().includes(kw))
+  }
+  if (selectedTag.value) {
+    list = list.filter(t => (t.tags || []).includes(selectedTag.value))
+  }
+  return list
+})
+
+function getCategoryTagType(categoryId) {
+  const types = ['', 'success', 'warning', 'info', 'danger']
+  const idx = visibleCategories.value.findIndex(c => c.id === categoryId)
+  return types[idx % types.length] || ''
+}
+
+function deleteTodoItem(todo) {
+  if (!confirm('确定删除该待办？')) return
+  deleteDailyTodoItem(todo.id)
+  ElMessage.success('删除成功')
+}
 
 // ===== 批量预设待办 =====
 const PRESET_STORAGE_KEY = 'daily_work_batch_presets'
@@ -2587,6 +2596,107 @@ onMounted(async () => {
   padding-left: 10px;
   border-left: 1px solid #ebeef5;
   margin-left: 5px;
+}
+
+.todo-filter-bar {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.todo-filter-bar .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.todo-filter-bar .filter-label {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.todo-list-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.empty-todo-list {
+  padding: 40px 0;
+}
+
+.todo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.todo-row:hover {
+  border-color: #409EFF;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.todo-row.completed {
+  background: #f9fafb;
+  opacity: 0.7;
+}
+
+.todo-row-checkbox {
+  flex-shrink: 0;
+}
+
+.todo-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-row-content {
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.5;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.todo-row-content.completed {
+  text-decoration: line-through;
+  color: #909399;
+}
+
+.todo-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.todo-row-meta-item {
+  font-size: 12px;
+  color: #909399;
+}
+
+.todo-row-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.todo-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .batch-preset-content {

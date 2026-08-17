@@ -758,7 +758,7 @@ export function restoreSession() {
   store.user = { ...defaultUser, ...user }
 
   const userData = loadUserData(user.id)
-  if (userData && userData.dataVersion === DATA_VERSION) {
+  if (userData) {
     Object.assign(store, userData)
     store.user = { ...defaultUser, ...user, ...(userData.user || {}) }
   }
