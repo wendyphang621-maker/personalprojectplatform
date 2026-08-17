@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 const AUTH_KEY = 'project_workbench_auth'
 const USER_PREFIX = 'project_workbench_user_'
-const DATA_VERSION = 'v14'
+const DATA_VERSION = 'v15'
 
 const defaultUser = {
   name: '张三',
@@ -392,6 +392,13 @@ function loadUserData(userId) {
         const isValid = parsed.todoCategories.every(c => typeof c === 'object' && c !== null && c.id && c.name)
         if (!isValid) {
           result.todoCategories = defaultData.todoCategories
+        } else {
+          // 迁移：补全新增的默认分类（如果用户本地没有）
+          const existingIds = new Set(parsed.todoCategories.map(c => c.id))
+          const missingDefaults = defaultData.todoCategories.filter(dc => !existingIds.has(dc.id))
+          if (missingDefaults.length > 0) {
+            result.todoCategories = [...parsed.todoCategories, ...missingDefaults]
+          }
         }
       }
       
