@@ -299,6 +299,7 @@
           <div v-else-if="tab.type === 'reminder'" class="reminder-container">
             <div class="search-bar" style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
               <el-button type="primary" @click="handleAddReminder">新增待办</el-button>
+              <el-button type="success" @click="openBatchPresetDialog">批量预设</el-button>
               <el-button @click="exportReminders">导出Excel</el-button>
               <span v-if="reminderPermission !== 'granted'" style="color: #e6a23c; font-size: 13px;">
                 桌面通知未开启，
