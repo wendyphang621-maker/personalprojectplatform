@@ -364,7 +364,7 @@ function createDefaultAuth() {
   }
 }
 
-function saveAuth(data) {
+export function saveAuth(data) {
   try {
     localStorage.setItem(AUTH_KEY, JSON.stringify(data))
   } catch (e) {

@@ -792,7 +792,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase } from '../store.js'
+import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase, saveAuth, saveToLocalStorage } from '../store.js'
 import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, getLocalModeStatus, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword, createAccount, listAccounts, updateAccount, deleteAccount, resetOtherUserPassword, logRequestDestination } from '../supabase.js'
 import { tabConfigs, updateTabTitle, resetTabTitle, resetAllTabTitles, getAllTabConfigs, DEFAULT_CONFIGS } from '../tabConfig.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -1258,7 +1258,16 @@ watch(() => userForm.defaultLogisticsCompany, (newCompany) => {
 })
 
 function saveUserInfo() {
-  alert('用户信息已保存')
+  if (authStore.currentUser) {
+    authStore.currentUser = { 
+      ...authStore.currentUser, 
+      name: userForm.name,
+      position: userForm.position
+    }
+    saveAuth(authStore)
+  }
+  saveToLocalStorage()
+  ElMessage.success('用户信息已保存')
 }
 
 const alertSettings = reactive({

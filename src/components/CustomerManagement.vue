@@ -193,18 +193,29 @@
         <el-button type="primary" @click="handleAddPayment">新增付款记录</el-button>
         <el-button @click="previewPayments">预览</el-button>
         <el-button @click="exportPayments">导出Excel</el-button>
+        <el-button type="warning" @click="triggerPaymentImport">批量导入</el-button>
+        <el-button type="danger" :disabled="selectedPaymentIds.length === 0" @click="batchDeletePayments">
+          批量删除<span v-if="selectedPaymentIds.length > 0">（{{ selectedPaymentIds.length }}）</span>
+        </el-button>
+        <input type="file" ref="paymentImportInput" accept=".xlsx,.xls" style="display: none" @change="handlePaymentImport" />
       </div>
-      <el-table :data="filteredPayments" border stripe>
+      <el-table :data="filteredPayments" border stripe @selection-change="handlePaymentSelectionChange">
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="id" label="记录ID" width="100" />
         <el-table-column prop="customerName" label="客户姓名" width="110" />
         <el-table-column prop="orderNo" label="订单编号" width="130" />
         <el-table-column prop="orderDate" label="订单日期" width="110" />
         <el-table-column prop="productName" label="产品名称" width="130" />
         <el-table-column prop="specModel" label="规格型号" width="130" />
+        <el-table-column prop="currency" label="币种" width="80">
+          <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}</template>
+        </el-table-column>
         <el-table-column prop="quantity" label="数量" width="80" />
-        <el-table-column prop="unitPrice" label="单价" width="80" />
-        <el-table-column prop="orderAmount" label="订单金额" width="100">
-          <template #default="{ row }">¥{{ row.orderAmount?.toLocaleString() }}</template>
+        <el-table-column prop="unitPrice" label="单价" width="80">
+          <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.unitPrice?.toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column prop="orderAmount" label="订单金额" width="110">
+          <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.orderAmount?.toLocaleString() }}</template>
         </el-table-column>
         <el-table-column prop="deliveryDate" label="交货日期" width="110" />
         <el-table-column prop="paymentBatch" label="付款批次" width="90" />
@@ -214,8 +225,8 @@
           </template>
         </el-table-column>
         <el-table-column prop="paymentDate" label="付款日期" width="110" />
-        <el-table-column prop="paymentAmount" label="付款金额" width="110">
-          <template #default="{ row }">¥{{ row.paymentAmount?.toLocaleString() }}</template>
+        <el-table-column prop="paymentAmount" label="付款金额" width="120">
+          <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.paymentAmount?.toLocaleString() }}</template>
         </el-table-column>
         <el-table-column prop="paymentMethod" label="付款方式" width="110" />
         <el-table-column label="到账状态" width="100">
@@ -535,6 +546,11 @@
         <el-form-item label="客户姓名">
           <el-input v-model="paymentForm.customerName" readonly />
         </el-form-item>
+        <el-form-item label="币种">
+          <el-select v-model="paymentForm.currency" filterable allow-create default-first-option placeholder="选择或输入币种" style="width: 100%;">
+            <el-option v-for="c in currencyOptions" :key="c.value" :label="c.label" :value="c.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="订单编号">
           <el-input v-model="paymentForm.orderNo" placeholder="如 PO-2026-001" />
         </el-form-item>
@@ -708,6 +724,7 @@ const isEditingPayment = ref(false)
 const customerImportInput = ref(null)
 const followupImportInput = ref(null)
 const groupImportInput = ref(null)
+const paymentImportInput = ref(null)
 const showCustomerPreviewDialog = ref(false)
 const showAttachmentDialog = ref(false)
 const showFollowupPreview = ref(false)
@@ -720,6 +737,7 @@ const showMoveGroupDialog = ref(false)
 const moveTargetGroup = ref('')
 
 const selectedFollowupIds = ref([])
+const selectedPaymentIds = ref([])
 
 const showFollowupDetailDialog = ref(false)
 const currentPreviewFollowup = ref(null)
@@ -851,6 +869,7 @@ const paymentForm = reactive({
   id: '',
   customerId: '',
   customerName: '',
+  currency: 'CNY',
   orderNo: '',
   orderDate: new Date().toISOString().split('T')[0],
   productName: '',
@@ -906,6 +925,28 @@ const logisticsOptions = [
   '万邑通',
   '速卖通'
 ]
+
+const currencyOptions = [
+  { value: 'CNY', label: '人民币 (CNY) - ¥', symbol: '¥' },
+  { value: 'USD', label: '美元 (USD) - $', symbol: '$' },
+  { value: 'EUR', label: '欧元 (EUR) - €', symbol: '€' },
+  { value: 'GBP', label: '英镑 (GBP) - £', symbol: '£' },
+  { value: 'JPY', label: '日元 (JPY) - ¥', symbol: '¥' },
+  { value: 'HKD', label: '港币 (HKD) - HK$', symbol: 'HK$' },
+  { value: 'AUD', label: '澳元 (AUD) - A$', symbol: 'A$' },
+  { value: 'CAD', label: '加元 (CAD) - C$', symbol: 'C$' },
+  { value: 'SGD', label: '新加坡元 (SGD) - S$', symbol: 'S$' },
+  { value: 'KRW', label: '韩元 (KRW) - ₩', symbol: '₩' },
+  { value: 'THB', label: '泰铢 (THB) - ฿', symbol: '฿' },
+  { value: 'MYR', label: '马币 (MYR) - RM', symbol: 'RM' },
+  { value: 'TWD', label: '新台币 (TWD) - NT$', symbol: 'NT$' }
+]
+
+function getCurrencySymbol(currency) {
+  if (!currency) return '¥'
+  const found = currencyOptions.find(c => c.value === currency)
+  return found ? found.symbol : (currency + ' ')
+}
 
 const newGroupForm = reactive({ name: '' })
 const isEditingGroup = ref(false)
@@ -1423,13 +1464,14 @@ function previewPayments() {
 }
 
 function exportPayments() {
-  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
+  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '币种', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
   const data = filteredPayments.value.map(p => [
     p.customerName || '',
     p.orderNo || '',
     p.orderDate || '',
     p.productName || '',
     p.specModel || '',
+    p.currency || 'CNY',
     p.quantity || 0,
     p.unitPrice || 0,
     p.orderAmount || 0,
@@ -1702,6 +1744,114 @@ async function handleGroupImport(event) {
       }
     })
     ElMessage.success(`成功导入 ${result.data.length} 个客户分组`)
+  }).catch(() => {})
+}
+
+// 触发付款记录导入
+function triggerPaymentImport() {
+  paymentImportInput.value?.click()
+}
+
+// 处理付款记录导入
+async function handlePaymentImport(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+
+  const result = await importFromExcel(file, {
+    fieldMapping: fieldMappingPresets.customerPayments,
+    headerRow: 2,
+    startRow: 3
+  })
+
+  if (!result.success) {
+    ElMessage.error(result.message || '导入失败')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `检测到 ${result.data.length} 条付款记录，是否导入？\n注意：相同ID的记录将被覆盖`,
+    '确认导入',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+  ).then(async () => {
+    const importedPayments = []
+    result.data.forEach(payment => {
+      // 根据客户姓名查找客户ID
+      let customerId = payment.customerId || ''
+      if (!customerId && payment.customerName) {
+        const customer = store.customers.find(c => c.name === payment.customerName)
+        if (customer) {
+          customerId = customer.id
+        }
+      }
+
+      // 生成ID
+      let id = payment.id
+      if (!id || !/^CPAY-/.test(id)) {
+        id = generateId('cp')
+      }
+
+      const idx = store.customerPayments.findIndex(p => p.id === id)
+      let rec
+      if (idx > -1) {
+        rec = { ...store.customerPayments[idx], ...payment, id, customerId }
+        store.customerPayments[idx] = rec
+      } else {
+        rec = {
+          id,
+          customerId,
+          customerName: payment.customerName || '',
+          currency: payment.currency || 'CNY',
+          orderNo: payment.orderNo || '',
+          orderDate: payment.orderDate || '',
+          productName: payment.productName || '',
+          specModel: payment.specModel || '',
+          quantity: Number(payment.quantity) || 0,
+          unitPrice: Number(payment.unitPrice) || 0,
+          orderAmount: Number(payment.orderAmount) || 0,
+          deliveryDate: payment.deliveryDate || '',
+          paymentBatch: payment.paymentBatch || '第1笔',
+          paymentType: payment.paymentType || '定金',
+          paymentDate: payment.paymentDate || '',
+          paymentAmount: Number(payment.paymentAmount) || 0,
+          paymentMethod: payment.paymentMethod || '银行转账',
+          arrivalStatus: payment.arrivalStatus || '未到账',
+          remark: payment.remark || ''
+        }
+        store.customerPayments.unshift(rec)
+      }
+      importedPayments.push(rec)
+    })
+    saveToLocalStorage()
+
+    if (!store.localMode) {
+      try {
+        localStorage.removeItem('supabase_rls_failed')
+        let syncSuccess = 0
+        let syncFail = 0
+        const failReasons = []
+        for (const p of importedPayments) {
+          const r = await syncToSupabase('customer_payments', p)
+          if (r.success) syncSuccess++
+          else {
+            syncFail++
+            const reason = r.error || r.rawError || '未知错误'
+            if (failReasons.length < 3 && !failReasons.includes(reason)) failReasons.push(reason)
+          }
+        }
+        if (syncFail === 0) {
+          ElMessage.success(`成功导入 ${importedPayments.length} 条付款记录并已同步到云端`)
+        } else {
+          const detail = failReasons.length > 0 ? `\n失败原因：${failReasons.join('；')}` : ''
+          ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedPayments.length} 条，云端同步成功 ${syncSuccess} 条，失败 ${syncFail} 条${detail}` })
+        }
+      } catch (e) {
+        console.error('云端同步失败:', e)
+        ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedPayments.length} 条，但云端同步失败：${e.message || e}` })
+      }
+    } else {
+      ElMessage.success(`成功导入 ${importedPayments.length} 条付款记录（本地模式）`)
+    }
   }).catch(() => {})
 }
 
@@ -1998,7 +2148,37 @@ function batchDeleteFollowups() {
   }).catch(() => {})
 }
 
+function handlePaymentSelectionChange(selection) {
+  selectedPaymentIds.value = selection.map(p => p.id)
+}
 
+function batchDeletePayments() {
+  if (selectedPaymentIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要删除的付款记录')
+    return
+  }
+  ElMessageBox.confirm(
+    `确定删除选中的 ${selectedPaymentIds.value.length} 条付款记录吗？此操作不可恢复！`,
+    '确认批量删除',
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'error'
+    }
+  ).then(async () => {
+    let deletedCount = 0
+    for (const id of selectedPaymentIds.value) {
+      const idx = store.customerPayments.findIndex(p => p.id === id)
+      if (idx > -1) {
+        store.customerPayments.splice(idx, 1)
+        deletedCount++
+      }
+    }
+    saveToLocalStorage()
+    selectedPaymentIds.value = []
+    ElMessage.success(`成功删除 ${deletedCount} 条付款记录`)
+  }).catch(() => {})
+}
 
 watch(() => store.customers, () => {}, { deep: true })
 watch(() => store.sampleDeliveries, () => {}, { deep: true })

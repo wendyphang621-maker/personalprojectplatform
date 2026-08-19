@@ -189,10 +189,20 @@
           <el-input v-model="quotationForm.unitPrice" />
         </el-form-item>
         <el-form-item label="币种">
-          <el-select v-model="quotationForm.currency">
-            <el-option label="USD" value="USD" />
-            <el-option label="EUR" value="EUR" />
-            <el-option label="CNY" value="CNY" />
+          <el-select v-model="quotationForm.currency" filterable allow-create default-first-option placeholder="选择或输入币种">
+            <el-option label="人民币 CNY" value="CNY" />
+            <el-option label="美元 USD" value="USD" />
+            <el-option label="欧元 EUR" value="EUR" />
+            <el-option label="英镑 GBP" value="GBP" />
+            <el-option label="日元 JPY" value="JPY" />
+            <el-option label="港币 HKD" value="HKD" />
+            <el-option label="澳元 AUD" value="AUD" />
+            <el-option label="加元 CAD" value="CAD" />
+            <el-option label="新加坡元 SGD" value="SGD" />
+            <el-option label="韩元 KRW" value="KRW" />
+            <el-option label="泰铢 THB" value="THB" />
+            <el-option label="马币 MYR" value="MYR" />
+            <el-option label="新台币 TWD" value="TWD" />
           </el-select>
         </el-form-item>
         <el-form-item label="报价日期">

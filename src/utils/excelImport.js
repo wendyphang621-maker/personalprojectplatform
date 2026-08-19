@@ -487,6 +487,43 @@ export const fieldMappingPresets = {
     { excelHeader: '实际交期', dataField: 'actualDate' },
     { excelHeader: '状态', dataField: 'status' },
     { excelHeader: '备注', dataField: 'remark' }
+  ],
+
+  // 客户付款记录
+  customerPayments: [
+    { excelHeader: '记录ID', dataField: 'id' },
+    { excelHeader: '客户姓名', dataField: 'customerName' },
+    { excelHeader: '客户', dataField: 'customerName' },
+    { excelHeader: '币种', dataField: 'currency' },
+    { excelHeader: '货币', dataField: 'currency' },
+    { excelHeader: 'Currency', dataField: 'currency' },
+    { excelHeader: '订单编号', dataField: 'orderNo' },
+    { excelHeader: '订单号', dataField: 'orderNo' },
+    { excelHeader: 'PO号', dataField: 'orderNo' },
+    { excelHeader: '订单日期', dataField: 'orderDate' },
+    { excelHeader: '下单日期', dataField: 'orderDate' },
+    { excelHeader: '产品名称', dataField: 'productName' },
+    { excelHeader: '产品', dataField: 'productName' },
+    { excelHeader: '规格型号', dataField: 'specModel' },
+    { excelHeader: '规格', dataField: 'specModel' },
+    { excelHeader: '数量', dataField: 'quantity' },
+    { excelHeader: '单价', dataField: 'unitPrice' },
+    { excelHeader: '订单金额', dataField: 'orderAmount' },
+    { excelHeader: '总金额', dataField: 'orderAmount' },
+    { excelHeader: '交货日期', dataField: 'deliveryDate' },
+    { excelHeader: '交期', dataField: 'deliveryDate' },
+    { excelHeader: '付款批次', dataField: 'paymentBatch' },
+    { excelHeader: '批次', dataField: 'paymentBatch' },
+    { excelHeader: '付款类型', dataField: 'paymentType' },
+    { excelHeader: '类型', dataField: 'paymentType' },
+    { excelHeader: '付款日期', dataField: 'paymentDate' },
+    { excelHeader: '付款金额', dataField: 'paymentAmount' },
+    { excelHeader: '金额', dataField: 'paymentAmount' },
+    { excelHeader: '付款方式', dataField: 'paymentMethod' },
+    { excelHeader: '方式', dataField: 'paymentMethod' },
+    { excelHeader: '到账状态', dataField: 'arrivalStatus' },
+    { excelHeader: '状态', dataField: 'arrivalStatus' },
+    { excelHeader: '备注', dataField: 'remark' }
   ]
 }
 
