@@ -766,7 +766,7 @@ import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogis
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
-import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase } from '../supabase.js'
+import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase, deleteFromSupabase } from '../supabase.js'
 import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -1482,15 +1482,32 @@ function handleEditPayment(row) {
   showPaymentDialog.value = true
 }
 
-function handleDeletePayment(row) {
+async function handleDeletePayment(row) {
   ElMessageBox.confirm(
     `确认删除付款记录 "${row.id}"？此操作不可恢复。`,
     '确认删除',
     { type: 'warning' }
-  ).then(() => {
+  ).then(async () => {
+    // 本地删除
     const idx = store.customerPayments.findIndex(p => p.id === row.id)
     if (idx > -1) store.customerPayments.splice(idx, 1)
-    ElMessage.success('删除成功')
+    saveToLocalStorage()
+    
+    // 云端同步删除
+    const client = await getSupabase()
+    const isLoggedIn = !store.localMode && client
+    
+    if (isLoggedIn) {
+      const r = await deleteFromSupabase('customer_payments', row.id)
+      if (r.success) {
+        ElMessage.success('删除成功并已同步到云端')
+      } else {
+        console.warn(`[付款记录] 删除同步失败: ${r.error}`)
+        ElMessage({ type: 'warning', duration: 6000, message: '本地已删除，云端同步失败，请检查网络后重试' })
+      }
+    } else {
+      ElMessage.success('删除成功')
+    }
   }).catch(() => {})
 }
 
@@ -2269,7 +2286,7 @@ function handlePaymentSelectionChange(selection) {
   selectedPaymentIds.value = selection.map(p => p.id)
 }
 
-function batchDeletePayments() {
+async function batchDeletePayments() {
   if (selectedPaymentIds.value.length === 0) {
     ElMessage.warning('请先勾选需要删除的付款记录')
     return
@@ -2284,16 +2301,36 @@ function batchDeletePayments() {
     }
   ).then(async () => {
     let deletedCount = 0
+    let cloudFailedCount = 0
+    
+    // 获取 Supabase 客户端状态
+    const client = await getSupabase()
+    const isLoggedIn = !store.localMode && client
+    
     for (const id of selectedPaymentIds.value) {
       const idx = store.customerPayments.findIndex(p => p.id === id)
       if (idx > -1) {
         store.customerPayments.splice(idx, 1)
         deletedCount++
+        
+        // 云端同步删除
+        if (isLoggedIn) {
+          const r = await deleteFromSupabase('customer_payments', id)
+          if (!r.success) {
+            cloudFailedCount++
+            console.warn(`[付款记录] 批量删除同步失败: ${id}, ${r.error}`)
+          }
+        }
       }
     }
     saveToLocalStorage()
     selectedPaymentIds.value = []
-    ElMessage.success(`成功删除 ${deletedCount} 条付款记录`)
+    
+    if (isLoggedIn && cloudFailedCount > 0) {
+      ElMessage({ type: 'warning', duration: 6000, message: `本地已删除 ${deletedCount} 条，云端同步失败 ${cloudFailedCount} 条，请检查网络后重试` })
+    } else {
+      ElMessage.success(`成功删除 ${deletedCount} 条付款记录${isLoggedIn ? '并已同步到云端' : ''}`)
+    }
   }).catch(() => {})
 }
 
@@ -2349,6 +2386,12 @@ async function confirmBatchEdit() {
     }
   ).then(async () => {
     let updatedCount = 0
+    let cloudFailedCount = 0
+    
+    // 获取 Supabase 客户端状态
+    const client = await getSupabase()
+    const isLoggedIn = !store.localMode && client
+    
     for (const id of selectedPaymentIds.value) {
       const payment = store.customerPayments.find(p => p.id === id)
       if (payment) {
@@ -2357,11 +2400,27 @@ async function confirmBatchEdit() {
           payment[field] = batchEditData[field]
         }
         updatedCount++
+        
+        // 云端同步更新
+        if (isLoggedIn) {
+          const { id: paymentId, ...rest } = payment
+          const payload = { id: paymentId, ...rest }
+          const r = await syncToSupabase('customer_payments', payload)
+          if (!r.success) {
+            cloudFailedCount++
+            console.warn(`[付款记录] 批量编辑同步失败: ${id}, ${r.error}`)
+          }
+        }
       }
     }
     saveToLocalStorage()
     showBatchEditDialog.value = false
-    ElMessage.success(`成功更新 ${updatedCount} 条付款记录`)
+    
+    if (isLoggedIn && cloudFailedCount > 0) {
+      ElMessage({ type: 'warning', duration: 6000, message: `本地已更新 ${updatedCount} 条，云端同步失败 ${cloudFailedCount} 条，请检查网络后重试` })
+    } else {
+      ElMessage.success(`成功更新 ${updatedCount} 条付款记录${isLoggedIn ? '并已同步到云端' : ''}`)
+    }
   }).catch(() => {})
 }
 
