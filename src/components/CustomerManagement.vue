@@ -194,6 +194,9 @@
         <el-button @click="previewPayments">预览</el-button>
         <el-button @click="exportPayments">导出Excel</el-button>
         <el-button type="warning" @click="triggerPaymentImport">批量导入</el-button>
+        <el-button type="success" :disabled="selectedPaymentIds.length === 0" @click="openBatchEditDialog">
+          批量编辑<span v-if="selectedPaymentIds.length > 0">（{{ selectedPaymentIds.length }}）</span>
+        </el-button>
         <el-button type="danger" :disabled="selectedPaymentIds.length === 0" @click="batchDeletePayments">
           批量删除<span v-if="selectedPaymentIds.length > 0">（{{ selectedPaymentIds.length }}）</span>
         </el-button>
@@ -622,6 +625,88 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showBatchEditDialog" title="批量编辑付款记录" width="700px" :close-on-click-modal="false">
+      <div style="margin-bottom: 15px; padding: 10px; background: #f0f9ff; border-radius: 4px; color: #409eff;">
+        已选择 <strong>{{ selectedPaymentIds.length }}</strong> 条记录，勾选需要批量修改的字段并输入新值
+      </div>
+      <el-form label-width="120px">
+        <el-divider content-position="left">基础信息</el-divider>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.currency">批量修改币种</el-checkbox>
+          <el-select v-if="batchEditFields.currency" v-model="batchEditData.currency" filterable allow-create default-first-option placeholder="选择或输入币种" style="width: 100%; margin-top: 8px;">
+            <el-option v-for="c in currencyOptions" :key="c.value" :label="c.label" :value="c.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.orderDate">批量修改订单日期</el-checkbox>
+          <el-date-picker v-if="batchEditFields.orderDate" v-model="batchEditData.orderDate" type="date" placeholder="选择日期" style="width: 100%; margin-top: 8px;" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.deliveryDate">批量修改交货日期</el-checkbox>
+          <el-date-picker v-if="batchEditFields.deliveryDate" v-model="batchEditData.deliveryDate" type="date" placeholder="选择日期" style="width: 100%; margin-top: 8px;" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        
+        <el-divider content-position="left">金额与数量</el-divider>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.quantity">批量修改数量</el-checkbox>
+          <el-input-number v-if="batchEditFields.quantity" v-model="batchEditData.quantity" :min="0" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.unitPrice">批量修改单价</el-checkbox>
+          <el-input-number v-if="batchEditFields.unitPrice" v-model="batchEditData.unitPrice" :min="0" :precision="2" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.orderAmount">批量修改订单金额</el-checkbox>
+          <el-input-number v-if="batchEditFields.orderAmount" v-model="batchEditData.orderAmount" :min="0" :precision="2" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        
+        <el-divider content-position="left">付款信息</el-divider>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentBatch">批量修改付款批次</el-checkbox>
+          <el-select v-if="batchEditFields.paymentBatch" v-model="batchEditData.paymentBatch" placeholder="选择批次" style="width: 100%; margin-top: 8px;">
+            <el-option v-for="b in ['第一批', '第二批', '第三批', '尾款']" :key="b" :label="b" :value="b" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentType">批量修改付款类型</el-checkbox>
+          <el-select v-if="batchEditFields.paymentType" v-model="batchEditData.paymentType" placeholder="选择类型" style="width: 100%; margin-top: 8px;">
+            <el-option v-for="t in ['订金', '预付款', '发货款', '尾款']" :key="t" :label="t" :value="t" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentDate">批量修改付款日期</el-checkbox>
+          <el-date-picker v-if="batchEditFields.paymentDate" v-model="batchEditData.paymentDate" type="date" placeholder="选择日期" style="width: 100%; margin-top: 8px;" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentAmount">批量修改付款金额</el-checkbox>
+          <el-input-number v-if="batchEditFields.paymentAmount" v-model="batchEditData.paymentAmount" :min="0" :precision="2" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentMethod">批量修改付款方式</el-checkbox>
+          <el-select v-if="batchEditFields.paymentMethod" v-model="batchEditData.paymentMethod" placeholder="选择方式" style="width: 100%; margin-top: 8px;">
+            <el-option v-for="m in ['银行转账', '支付宝', '微信', '现金', '其他']" :key="m" :label="m" :value="m" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.arrivalStatus">批量修改到账状态</el-checkbox>
+          <el-select v-if="batchEditFields.arrivalStatus" v-model="batchEditData.arrivalStatus" placeholder="选择状态" style="width: 100%; margin-top: 8px;">
+            <el-option label="已到账" value="已到账" />
+            <el-option label="未到账" value="未到账" />
+          </el-select>
+        </el-form-item>
+        
+        <el-divider content-position="left">其他</el-divider>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.remark">批量修改备注</el-checkbox>
+          <el-input v-if="batchEditFields.remark" v-model="batchEditData.remark" type="textarea" :rows="2" placeholder="输入备注内容" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBatchEditDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmBatchEdit">应用修改</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="showPaymentPreviewDialog" title="付款记录预览" width="1000px" :close-on-click-modal="false">
       <div class="preview-container">
         <div class="preview-header">
@@ -738,6 +823,38 @@ const moveTargetGroup = ref('')
 
 const selectedFollowupIds = ref([])
 const selectedPaymentIds = ref([])
+
+const showBatchEditDialog = ref(false)
+const batchEditFields = reactive({
+  currency: false,
+  orderDate: false,
+  deliveryDate: false,
+  quantity: false,
+  unitPrice: false,
+  orderAmount: false,
+  paymentBatch: false,
+  paymentType: false,
+  paymentDate: false,
+  paymentAmount: false,
+  paymentMethod: false,
+  arrivalStatus: false,
+  remark: false
+})
+const batchEditData = reactive({
+  currency: 'CNY',
+  orderDate: '',
+  deliveryDate: '',
+  quantity: 0,
+  unitPrice: 0,
+  orderAmount: 0,
+  paymentBatch: '',
+  paymentType: '',
+  paymentDate: '',
+  paymentAmount: 0,
+  paymentMethod: '',
+  arrivalStatus: '',
+  remark: ''
+})
 
 const showFollowupDetailDialog = ref(false)
 const currentPreviewFollowup = ref(null)
@@ -2178,6 +2295,90 @@ function batchDeletePayments() {
     selectedPaymentIds.value = []
     ElMessage.success(`成功删除 ${deletedCount} 条付款记录`)
   }).catch(() => {})
+}
+
+function openBatchEditDialog() {
+  if (selectedPaymentIds.value.length === 0) {
+    ElMessage.warning('请先勾选需要编辑的付款记录')
+    return
+  }
+  // Reset checkboxes and data
+  Object.keys(batchEditFields).forEach(key => { batchEditFields[key] = false })
+  Object.assign(batchEditData, {
+    currency: 'CNY',
+    orderDate: '',
+    deliveryDate: '',
+    quantity: 0,
+    unitPrice: 0,
+    orderAmount: 0,
+    paymentBatch: '',
+    paymentType: '',
+    paymentDate: '',
+    paymentAmount: 0,
+    paymentMethod: '',
+    arrivalStatus: '',
+    remark: ''
+  })
+  showBatchEditDialog.value = true
+}
+
+async function confirmBatchEdit() {
+  // Check if any field is selected
+  const selectedFields = Object.keys(batchEditFields).filter(k => batchEditFields[k])
+  if (selectedFields.length === 0) {
+    ElMessage.warning('请至少勾选一个需要修改的字段')
+    return
+  }
+  
+  // Check if number fields have valid values
+  const numberFields = ['quantity', 'unitPrice', 'orderAmount', 'paymentAmount']
+  for (const field of numberFields) {
+    if (batchEditFields[field] && (batchEditData[field] === null || batchEditData[field] === undefined)) {
+      ElMessage.warning(`请填写 ${fieldLabels[field]} 的值`)
+      return
+    }
+  }
+  
+  ElMessageBox.confirm(
+    `确定将选中的 ${selectedPaymentIds.value.length} 条记录修改为新值吗？`,
+    '确认批量修改',
+    {
+      confirmButtonText: '确定修改',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(async () => {
+    let updatedCount = 0
+    for (const id of selectedPaymentIds.value) {
+      const payment = store.customerPayments.find(p => p.id === id)
+      if (payment) {
+        // Apply selected fields
+        for (const field of selectedFields) {
+          payment[field] = batchEditData[field]
+        }
+        updatedCount++
+      }
+    }
+    saveToLocalStorage()
+    showBatchEditDialog.value = false
+    ElMessage.success(`成功更新 ${updatedCount} 条付款记录`)
+  }).catch(() => {})
+}
+
+const fieldLabels = {
+  currency: '币种',
+  orderDate: '订单日期',
+  deliveryDate: '交货日期',
+  quantity: '数量',
+  unitPrice: '单价',
+  orderAmount: '订单金额',
+  paymentBatch: '付款批次',
+  paymentType: '付款类型',
+  paymentDate: '付款日期',
+  paymentAmount: '付款金额',
+  paymentMethod: '付款方式',
+  arrivalStatus: '到账状态',
+  remark: '备注'
 }
 
 watch(() => store.customers, () => {}, { deep: true })
