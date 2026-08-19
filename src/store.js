@@ -954,8 +954,6 @@ const SHORT_ID_FORMATS = {
 }
 
 function getNextCounter(fmtPrefix, storeKey) {
-  if (idCounters[fmtPrefix]) return idCounters[fmtPrefix]
-  
   try {
     const data = store[storeKey]
     if (Array.isArray(data)) {
