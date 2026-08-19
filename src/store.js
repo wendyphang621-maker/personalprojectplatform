@@ -886,8 +886,8 @@ const SHORT_ID_FORMATS = {
   cr: { prefix: 'CR', pad: 4, storeKey: 'certRecords' },
   cert: { prefix: 'CERT', pad: 4, storeKey: 'certRecords' },
   lb: { prefix: 'LB', pad: 4, storeKey: 'logisticsBills' },
-  cp: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments', random: true, randomLen: 12 },
-  pay: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments', random: true, randomLen: 12 },
+  cp: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments' },
+  pay: { prefix: 'CPAY', pad: 4, storeKey: 'customerPayments' },
   tag: { prefix: 'TAG', pad: 3, storeKey: 'tags' },
   cat: { prefix: 'CAT', pad: 3, storeKey: 'categories' },
   gb: { prefix: 'GB', pad: 3, storeKey: 'groups' },
@@ -971,9 +971,9 @@ export function generateId(prefix = '') {
   return `${prefix}-${String(idCounters[prefix]).padStart(3, '0')}`
 }
 
-// 校验付款记录 ID 是否为标准 CPAY- 前缀
+// 校验付款记录 ID 是否为标准 CPAY- 前缀（支持有序编号和随机字符串两种格式）
 export function isValidPaymentId(id) {
-  return typeof id === 'string' && /^CPAY-[a-z0-9]{8,16}$/.test(id)
+  return typeof id === 'string' && /^CPAY-(\d+|[a-z0-9]{4,16})$/.test(id)
 }
 
 const permissionMatrix = {
