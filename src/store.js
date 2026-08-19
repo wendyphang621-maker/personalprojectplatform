@@ -402,7 +402,7 @@ function loadUserData(userId) {
         }
       }
       
-      return migrateSampleDeliveries(result)
+      return migratePaymentIds(migrateSampleDeliveries(result))
     }
     return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
   } catch {
@@ -671,6 +671,51 @@ function migrateSampleDeliveries(data) {
   return data
 }
 
+// 付款记录ID迁移：将随机ID转换为有序编号
+function migratePaymentIds(data) {
+  if (!data.customerPayments || !Array.isArray(data.customerPayments)) return data
+  
+  // 收集已是标准 CPAY-XXXX 格式的ID
+  const validCpayIds = new Set()
+  data.customerPayments.forEach(p => {
+    if (p.id && /^CPAY-\d{4}$/.test(p.id)) {
+      validCpayIds.add(p.id)
+    }
+  })
+  
+  // 计算当前最大编号
+  let cpayIdCounter = 0
+  validCpayIds.forEach(id => {
+    const match = id.match(/^CPAY-(\d{4})$/)
+    if (match) cpayIdCounter = Math.max(cpayIdCounter, parseInt(match[1]))
+  })
+  
+  let migratedCount = 0
+  data.customerPayments = data.customerPayments.map(p => {
+    const fixed = { ...p }
+    // 需要新ID的情况: 无id、随机格式、或非 CPAY-XXXX 格式
+    const needNewId = !fixed.id || !/^CPAY-\d{4}$/.test(fixed.id)
+    if (needNewId) {
+      cpayIdCounter++
+      fixed.id = `CPAY-${String(cpayIdCounter).padStart(4, '0')}`
+      while (validCpayIds.has(fixed.id)) {
+        cpayIdCounter++
+        fixed.id = `CPAY-${String(cpayIdCounter).padStart(4, '0')}`
+      }
+      validCpayIds.add(fixed.id)
+      migratedCount++
+      console.log(`[迁移] 付款记录编号已修正: ${p.id} -> ${fixed.id}`)
+    }
+    return fixed
+  })
+  
+  if (migratedCount > 0) {
+    console.log(`[迁移] 共迁移 ${migratedCount} 条付款记录ID为有序编号`)
+  }
+  
+  return data
+}
+
 function saveUserData(userId, data) {
   try {
     localStorage.setItem(USER_PREFIX + userId, JSON.stringify(data))
@@ -693,6 +738,7 @@ export function saveToLocalStorage() {
       sampleRecords: store.sampleRecords,
       followups: store.followups,
       customerGroups: store.customerGroups,
+      customerPayments: store.customerPayments,
       tasks: store.tasks,
       dailyTodos: store.dailyTodos,
       orderProducts: store.orderProducts,
