@@ -203,6 +203,13 @@
         <input type="file" ref="paymentImportInput" accept=".xlsx,.xls" style="display: none" @change="handlePaymentImport" />
       </div>
       <div class="payment-stats-bar">
+        <div class="stats-currency-filter">
+          <span class="stats-filter-label">统计币种：</span>
+          <el-select v-model="statsDisplayCurrency" placeholder="全部币种" clearable size="small" style="width: 160px;">
+            <el-option label="全部币种" value="" />
+            <el-option v-for="c in availableCurrenciesInStats" :key="c" :label="c + ' (' + getCurrencySymbol(c) + ')'" :value="c" />
+          </el-select>
+        </div>
         <div class="stat-item stat-total">
           <span class="stat-label">订单总金额</span>
           <span class="stat-value">{{ formatMoney(sumTotalOrderAmount) }}</span>
@@ -213,7 +220,7 @@
         </div>
         <div class="stat-item stat-remaining">
           <span class="stat-label">⚠️ 未结清尾款</span>
-          <span class="stat-value">{{ remainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
+          <span class="stat-value">{{ statsRemainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
         </div>
       </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
@@ -1194,32 +1201,75 @@ const pendingPaymentCount = computed(() => {
 })
 
 const settledPaymentCount = computed(() => {
-  return filteredPayments.value.filter(p => getRecordSettlementStatus(p) === 'settled').length
+  return filteredStatsPayments.value.filter(p => p.arrivalStatus === '已到账').length
 })
 
 const remainingOrderCount = computed(() => {
   return Object.values(orderSettlementMap.value).filter(s => s.hasRemaining).length
 })
 
+const statsDisplayCurrency = ref('')
+
+const availableCurrenciesInStats = computed(() => {
+  const currs = new Set()
+  filteredPayments.value.forEach(p => { if (p.currency) currs.add(p.currency) })
+  return Array.from(currs)
+})
+
+const filteredStatsPayments = computed(() => {
+  if (!statsDisplayCurrency.value) return filteredPayments.value
+  return filteredPayments.value.filter(p => p.currency === statsDisplayCurrency.value)
+})
+
+const filteredOrderSettlementMap = computed(() => {
+  const map = {}
+  filteredStatsPayments.value.forEach(p => {
+    const orderNo = p.orderNo
+    if (!orderNo) return
+    if (!map[orderNo]) {
+      map[orderNo] = { orderAmount: 0, paidAmount: 0 }
+    }
+    map[orderNo].orderAmount += Number(p.orderAmount) || 0
+    if (p.arrivalStatus === '已到账') {
+      map[orderNo].paidAmount += Number(p.paymentAmount) || 0
+    }
+  })
+  const result = {}
+  Object.keys(map).forEach(orderNo => {
+    const { orderAmount, paidAmount } = map[orderNo]
+    const unpaid = orderAmount - paidAmount
+    result[orderNo] = {
+      orderAmount, paidAmount, unpaid,
+      isSettled: unpaid <= 0,
+      hasRemaining: unpaid > 0
+    }
+  })
+  return result
+})
+
+const statsRemainingOrderCount = computed(() => {
+  return Object.values(filteredOrderSettlementMap.value).filter(s => s.hasRemaining).length
+})
+
 const sumSettledAmount = computed(() => {
-  return filteredPayments.value
+  return filteredStatsPayments.value
     .filter(p => p.arrivalStatus === '已到账')
     .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
 })
 
 const sumRemainingAmount = computed(() => {
-  return Object.values(orderSettlementMap.value)
+  return Object.values(filteredOrderSettlementMap.value)
     .filter(s => s.hasRemaining)
     .reduce((sum, s) => sum + s.unpaid, 0)
 })
 
 const sumTotalOrderAmount = computed(() => {
-  return filteredPayments.value.reduce((sum, p) => sum + (Number(p.orderAmount) || 0), 0)
+  return filteredStatsPayments.value.reduce((sum, p) => sum + (Number(p.orderAmount) || 0), 0)
 })
 
-function formatMoney(amount) {
-  if (!amount || amount <= 0) return '¥0'
-  return '¥' + Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+function formatMoney(amount, currency) {
+  if (!amount || amount <= 0) return getCurrencySymbol(currency || statsDisplayCurrency.value) + '0'
+  return getCurrencySymbol(currency || statsDisplayCurrency.value) + Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 function paymentRowClassName({ row }) {
@@ -2589,7 +2639,26 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 8px;
   border: 1px solid #e2e8f0;
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
+
+.stats-currency-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.stats-filter-label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
 
 .stat-item {
   display: flex;
