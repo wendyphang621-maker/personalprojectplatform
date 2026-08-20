@@ -202,7 +202,21 @@
         </el-button>
         <input type="file" ref="paymentImportInput" accept=".xlsx,.xls" style="display: none" @change="handlePaymentImport" />
       </div>
-      <el-table :data="filteredPayments" border stripe @selection-change="handlePaymentSelectionChange">
+      <div class="payment-stats-bar">
+        <div class="stat-item stat-total">
+          <span class="stat-label">总记录</span>
+          <span class="stat-value">{{ filteredPayments.length }} 笔</span>
+        </div>
+        <div class="stat-item stat-paid">
+          <span class="stat-label">已到账</span>
+          <span class="stat-value">{{ paidPaymentCount }} 笔 / {{ formatMoney(sumPaidAmount) }}</span>
+        </div>
+        <div class="stat-item stat-pending">
+          <span class="stat-label">待付款</span>
+          <span class="stat-value">{{ pendingPaymentCount }} 笔 / {{ formatMoney(sumPendingAmount) }}</span>
+        </div>
+      </div>
+      <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="id" label="记录ID" width="100" />
         <el-table-column prop="customerName" label="客户姓名" width="110" />
@@ -232,9 +246,15 @@
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.paymentAmount?.toLocaleString() }}</template>
         </el-table-column>
         <el-table-column prop="paymentMethod" label="付款方式" width="110" />
-        <el-table-column label="到账状态" width="100">
+        <el-table-column label="到账状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.arrivalStatus === '已到账' ? 'success' : 'danger'" size="small">{{ row.arrivalStatus }}</el-tag>
+            <el-tag
+              :type="row.arrivalStatus === '已到账' ? 'success' : 'warning'"
+              size="default"
+              effect="dark"
+            >
+              {{ row.arrivalStatus === '已到账' ? '✅ 已结清' : '⏳ 待付款' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
@@ -1105,6 +1125,38 @@ const filteredPayments = computed(() => {
     return matchKeyword && matchCustomer && matchStatus
   })
 })
+
+const pendingPaymentCount = computed(() => {
+  return filteredPayments.value.filter(p => p.arrivalStatus !== '已到账').length
+})
+
+const paidPaymentCount = computed(() => {
+  return filteredPayments.value.filter(p => p.arrivalStatus === '已到账').length
+})
+
+const sumPendingAmount = computed(() => {
+  return filteredPayments.value
+    .filter(p => p.arrivalStatus !== '已到账')
+    .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
+})
+
+const sumPaidAmount = computed(() => {
+  return filteredPayments.value
+    .filter(p => p.arrivalStatus === '已到账')
+    .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
+})
+
+function formatMoney(amount) {
+  if (!amount) return '¥0'
+  return '¥' + Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+function paymentRowClassName({ row }) {
+  if (row.arrivalStatus !== '已到账') {
+    return 'payment-pending-row'
+  }
+  return ''
+}
 
 function getSampleCount(customerName) {
   return store.sampleDeliveries.filter(s => s.customer_name === customerName).length
@@ -2456,6 +2508,63 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   padding: 20px;
   background: #fff;
   border-radius: 4px;
+}
+
+.payment-stats-bar {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 15px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: #fff;
+  min-width: 160px;
+}
+
+.stat-total {
+  border-left: 4px solid #409eff;
+}
+
+.stat-paid {
+  border-left: 4px solid #67c23a;
+}
+
+.stat-pending {
+  border-left: 4px solid #e6a23c;
+  background: #fff7ed;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.stat-pending .stat-value {
+  color: #d97706;
+}
+
+:deep(.payment-pending-row) {
+  background-color: #fff7ed !important;
+}
+
+:deep(.payment-pending-row:hover > td) {
+  background-color: #ffedd5 !important;
 }
 
 .search-bar {
