@@ -204,16 +204,16 @@
       </div>
       <div class="payment-stats-bar">
         <div class="stat-item stat-total">
-          <span class="stat-label">总记录</span>
-          <span class="stat-value">{{ filteredPayments.length }} 笔</span>
+          <span class="stat-label">订单总金额</span>
+          <span class="stat-value">{{ formatMoney(sumTotalOrderAmount) }}</span>
         </div>
-        <div class="stat-item stat-paid">
+        <div class="stat-item stat-settled">
           <span class="stat-label">已到账</span>
-          <span class="stat-value">{{ paidPaymentCount }} 笔 / {{ formatMoney(sumPaidAmount) }}</span>
+          <span class="stat-value">{{ settledPaymentCount }} 笔 / {{ formatMoney(sumSettledAmount) }}</span>
         </div>
-        <div class="stat-item stat-pending">
-          <span class="stat-label">待付款</span>
-          <span class="stat-value">{{ pendingPaymentCount }} 笔 / {{ formatMoney(sumPendingAmount) }}</span>
+        <div class="stat-item stat-remaining">
+          <span class="stat-label">⚠️ 未结清尾款</span>
+          <span class="stat-value">{{ remainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
         </div>
       </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
@@ -246,14 +246,31 @@
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.paymentAmount?.toLocaleString() }}</template>
         </el-table-column>
         <el-table-column prop="paymentMethod" label="付款方式" width="110" />
-        <el-table-column label="到账状态" width="120">
+        <el-table-column label="到账状态" width="140">
           <template #default="{ row }">
             <el-tag
-              :type="row.arrivalStatus === '已到账' ? 'success' : 'warning'"
+              v-if="getRecordSettlementStatus(row) === 'remaining'"
+              type="danger"
               size="default"
               effect="dark"
             >
-              {{ row.arrivalStatus === '已到账' ? '✅ 已结清' : '⏳ 待付款' }}
+              ⚠️ 尾款未结清
+            </el-tag>
+            <el-tag
+              v-else-if="getRecordSettlementStatus(row) === 'settled'"
+              type="success"
+              size="default"
+              effect="dark"
+            >
+              ✅ 已结清
+            </el-tag>
+            <el-tag
+              v-else
+              type="warning"
+              size="default"
+              effect="dark"
+            >
+              ⏳ 待付款
             </el-tag>
           </template>
         </el-table-column>
@@ -861,16 +878,16 @@ const batchEditFields = reactive({
   remark: false
 })
 const batchEditData = reactive({
-  currency: 'CNY',
+  currency: '',
   orderDate: '',
   deliveryDate: '',
-  quantity: 0,
-  unitPrice: 0,
-  orderAmount: 0,
+  quantity: null,
+  unitPrice: null,
+  orderAmount: null,
   paymentBatch: '',
   paymentType: '',
   paymentDate: '',
-  paymentAmount: 0,
+  paymentAmount: null,
   paymentMethod: '',
   arrivalStatus: '',
   remark: ''
@@ -1126,35 +1143,89 @@ const filteredPayments = computed(() => {
   })
 })
 
+// 按订单编号分组，计算每个订单的结清状态
+const orderSettlementMap = computed(() => {
+  const map = {}
+  filteredPayments.value.forEach(p => {
+    const orderNo = p.orderNo
+    if (!orderNo) return
+    if (!map[orderNo]) {
+      map[orderNo] = { orderAmount: 0, paidAmount: 0 }
+    }
+    map[orderNo].orderAmount += Number(p.orderAmount) || 0
+    if (p.arrivalStatus === '已到账') {
+      map[orderNo].paidAmount += Number(p.paymentAmount) || 0
+    }
+  })
+  // 计算每个订单是否有未结清尾款
+  const result = {}
+  Object.keys(map).forEach(orderNo => {
+    const { orderAmount, paidAmount } = map[orderNo]
+    const unpaid = orderAmount - paidAmount
+    result[orderNo] = {
+      orderAmount,
+      paidAmount,
+      unpaid,
+      isSettled: unpaid <= 0,
+      hasRemaining: unpaid > 0
+    }
+  })
+  return result
+})
+
+// 获取单条记录的结清状态（用于标签显示）
+function getRecordSettlementStatus(row) {
+  const orderNo = row.orderNo
+  if (!orderNo) {
+    return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
+  }
+  const settlement = orderSettlementMap.value[orderNo]
+  if (!settlement) {
+    return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
+  }
+  if (settlement.hasRemaining) {
+    return 'remaining' // 尾款未结清
+  }
+  return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
+}
+
 const pendingPaymentCount = computed(() => {
-  return filteredPayments.value.filter(p => p.arrivalStatus !== '已到账').length
+  return filteredPayments.value.filter(p => getRecordSettlementStatus(p) !== 'settled').length
 })
 
-const paidPaymentCount = computed(() => {
-  return filteredPayments.value.filter(p => p.arrivalStatus === '已到账').length
+const settledPaymentCount = computed(() => {
+  return filteredPayments.value.filter(p => getRecordSettlementStatus(p) === 'settled').length
 })
 
-const sumPendingAmount = computed(() => {
-  return filteredPayments.value
-    .filter(p => p.arrivalStatus !== '已到账')
-    .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
+const remainingOrderCount = computed(() => {
+  return Object.values(orderSettlementMap.value).filter(s => s.hasRemaining).length
 })
 
-const sumPaidAmount = computed(() => {
+const sumSettledAmount = computed(() => {
   return filteredPayments.value
     .filter(p => p.arrivalStatus === '已到账')
     .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
 })
 
+const sumRemainingAmount = computed(() => {
+  return Object.values(orderSettlementMap.value)
+    .filter(s => s.hasRemaining)
+    .reduce((sum, s) => sum + s.unpaid, 0)
+})
+
+const sumTotalOrderAmount = computed(() => {
+  return filteredPayments.value.reduce((sum, p) => sum + (Number(p.orderAmount) || 0), 0)
+})
+
 function formatMoney(amount) {
-  if (!amount) return '¥0'
+  if (!amount || amount <= 0) return '¥0'
   return '¥' + Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 function paymentRowClassName({ row }) {
-  if (row.arrivalStatus !== '已到账') {
-    return 'payment-pending-row'
-  }
+  const status = getRecordSettlementStatus(row)
+  if (status === 'remaining') return 'payment-remaining-row'
+  if (status === 'pending') return 'payment-pending-row'
   return ''
 }
 
@@ -2394,16 +2465,16 @@ function openBatchEditDialog() {
   // Reset checkboxes and data
   Object.keys(batchEditFields).forEach(key => { batchEditFields[key] = false })
   Object.assign(batchEditData, {
-    currency: 'CNY',
+    currency: '',
     orderDate: '',
     deliveryDate: '',
-    quantity: 0,
-    unitPrice: 0,
-    orderAmount: 0,
+    quantity: null,
+    unitPrice: null,
+    orderAmount: null,
     paymentBatch: '',
     paymentType: '',
     paymentDate: '',
-    paymentAmount: 0,
+    paymentAmount: null,
     paymentMethod: '',
     arrivalStatus: '',
     remark: ''
@@ -2534,13 +2605,13 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   border-left: 4px solid #409eff;
 }
 
-.stat-paid {
+.stat-settled {
   border-left: 4px solid #67c23a;
 }
 
-.stat-pending {
-  border-left: 4px solid #e6a23c;
-  background: #fff7ed;
+.stat-remaining {
+  border-left: 4px solid #f56c6c;
+  background: #fef0f0;
 }
 
 .stat-label {
@@ -2555,8 +2626,16 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   color: #1e293b;
 }
 
-.stat-pending .stat-value {
-  color: #d97706;
+.stat-remaining .stat-value {
+  color: #c45656;
+}
+
+:deep(.payment-remaining-row) {
+  background-color: #fef0f0 !important;
+}
+
+:deep(.payment-remaining-row:hover > td) {
+  background-color: #fde2e2 !important;
 }
 
 :deep(.payment-pending-row) {
