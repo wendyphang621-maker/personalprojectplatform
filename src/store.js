@@ -5,7 +5,7 @@ const USER_PREFIX = 'project_workbench_user_'
 const DATA_VERSION = 'v15'
 
 const defaultUser = {
-  name: '张三',
+  name: 'Caroline',
   avatar: '',
   role: 'sales_assistant',
   position: '销售助理',
@@ -357,7 +357,8 @@ function createDefaultAuth() {
   return {
     users: [
       { id: 'admin1', username: 'admin', password: 'Admin@123', role: 'admin', position: '管理员', createdAt: '2024-01-01' },
-      { id: 'sales1', username: 'sales', password: 'Sales@123', role: 'sales_assistant', position: '销售助理', createdAt: '2024-01-01' }
+      { id: 'sales1', username: 'sales', password: 'Sales@123', role: 'sales_assistant', position: '销售助理', createdAt: '2024-01-01' },
+      { id: 'caroline1', username: 'Caroline', password: 'Caroline@123', role: 'sales_assistant', position: '销售经理', createdAt: '2024-01-01', name: 'Caroline' }
     ],
     currentUser: null,
     authVersion: DATA_VERSION
@@ -789,7 +790,9 @@ export async function login(username, password) {
   saveAuth(authStore)
   
   currentUserId = user.id
-  store.user = { ...defaultUser, ...user }
+  // 使用 username 作为默认显示名称，如果 user 中没有 name 字段
+  const userDisplayName = user.name || user.username
+  store.user = { ...defaultUser, ...user, name: userDisplayName }
   
   await syncAllFromSupabase()
   
@@ -801,12 +804,16 @@ export function restoreSession() {
 
   const user = authStore.currentUser
   currentUserId = user.id
-  store.user = { ...defaultUser, ...user }
+  // 使用 username 作为默认显示名称
+  const userDisplayName = user.name || user.username
+  store.user = { ...defaultUser, ...user, name: userDisplayName }
 
   const userData = loadUserData(user.id)
   if (userData) {
     Object.assign(store, userData)
-    store.user = { ...defaultUser, ...user, ...(userData.user || {}) }
+    // 保持正确的显示名称
+    const savedUserName = userData.user?.name || userDisplayName
+    store.user = { ...defaultUser, ...user, ...(userData.user || {}), name: savedUserName }
   }
 
   console.log(`[会话恢复] 用户: ${user.username} (${user.role}), 数据版本: ${userData?.dataVersion || 'default'}`)
