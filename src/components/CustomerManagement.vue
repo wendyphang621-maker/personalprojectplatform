@@ -222,9 +222,15 @@
           <span class="stat-label">⚠️ 未结清尾款</span>
           <span class="stat-value">{{ statsRemainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
         </div>
-        <div class="stat-item stat-warning" :class="{ 'stat-warning-active': urgentDeliveryCount > 0 }" v-if="urgentDeliveryCount > 0">
-          <span class="stat-label">🚨 催款提醒</span>
-          <span class="stat-value">{{ urgentDeliveryCount }} 个订单近7天到期</span>
+        <div 
+          class="stat-item stat-warning" 
+          :class="{ 'stat-warning-active': urgentDeliveryCount > 0, 'stat-warning-filtered': showOnlyUrgent }" 
+          v-if="urgentDeliveryCount > 0"
+          @click="toggleUrgentFilter"
+          style="cursor: pointer;"
+        >
+          <span class="stat-label">🚨 催款提醒 <el-icon v-if="showOnlyUrgent" size="14"><Close /></el-icon></span>
+          <span class="stat-value">{{ urgentDeliveryCount }} 个订单 / 待收 {{ formatMoney(sumUrgentUnpaidAmount) }}</span>
         </div>
       </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
@@ -877,7 +883,7 @@ import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync, getPaymentDateFields, getPaymentAmountFields } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase, deleteFromSupabase } from '../supabase.js'
-import { Document, ZoomIn, Plus, Warning } from '@element-plus/icons-vue'
+import { Document, ZoomIn, Plus, Warning, Close } from '@element-plus/icons-vue'
 
 const props = defineProps({
   currentSubPage: {
@@ -907,6 +913,7 @@ const followupDate = ref('')
 const paymentKeyword = ref('')
 const paymentFilterCustomer = ref('')
 const paymentFilterStatus = ref('')
+const showOnlyUrgent = ref(false)
 
 const showCustomerDialog = ref(false)
 const showFollowupDialog = ref(false)
@@ -1310,7 +1317,10 @@ const filteredPayments = computed(() => {
       p.orderNo?.toLowerCase().includes(paymentKeyword.value.toLowerCase())
     const matchCustomer = !paymentFilterCustomer.value || p.customerId === paymentFilterCustomer.value
     const matchStatus = !paymentFilterStatus.value || p.arrivalStatus === paymentFilterStatus.value
-    return matchKeyword && matchCustomer && matchStatus
+    // 催款提醒筛选：只显示近7天到期且未结清的订单
+    const matchUrgent = !showOnlyUrgent.value || 
+      (p.deliveryDate && isNearDeliveryDate(p.deliveryDate) && getRecordSettlementStatus(p) !== 'settled')
+    return matchKeyword && matchCustomer && matchStatus && matchUrgent
   })
 })
 
@@ -1464,6 +1474,36 @@ const urgentDeliveryCount = computed(() => {
   })
   return urgentOrders.size
 })
+
+// 催款提醒的待收总金额
+const sumUrgentUnpaidAmount = computed(() => {
+  let total = 0
+  const urgentOrders = new Set()
+  filteredPayments.value.forEach(p => {
+    if (p.deliveryDate && isNearDeliveryDate(p.deliveryDate) && getRecordSettlementStatus(p) !== 'settled') {
+      if (p.orderNo) {
+        urgentOrders.add(p.orderNo)
+      }
+    }
+  })
+  urgentOrders.forEach(orderNo => {
+    const settlement = orderSettlementMap.value[orderNo]
+    if (settlement && settlement.hasRemaining) {
+      total += settlement.unpaid
+    }
+  })
+  return total
+})
+
+// 切换催款提醒筛选
+function toggleUrgentFilter() {
+  showOnlyUrgent.value = !showOnlyUrgent.value
+  if (showOnlyUrgent.value) {
+    ElMessage.info('已筛选：近7天到期且未结清的订单')
+  } else {
+    ElMessage.info('已清除筛选')
+  }
+}
 
 const statsDisplayCurrency = ref('')
 
@@ -2995,6 +3035,23 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   border-left: 4px solid #e6a23c;
   background: #fdf6ec;
   animation: pulse-warning 2s infinite;
+  transition: all 0.3s ease;
+}
+
+.stat-warning:hover {
+  background: #faecd8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(230, 162, 60, 0.3);
+}
+
+.stat-warning-filtered {
+  border-left: 4px solid #f56c6c !important;
+  background: #fef0f0 !important;
+  animation: none !important;
+}
+
+.stat-warning-filtered .stat-value {
+  color: #c45656 !important;
 }
 
 .stat-warning .stat-value {
