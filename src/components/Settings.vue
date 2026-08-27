@@ -1609,20 +1609,43 @@ async function saveUser() {
         alert('创建失败：' + result.error)
       }
     } else {
-      const result = await updateAccount(editingUserId.value, {
-        email: userEditForm.username,
-        user_metadata: {
-          display_name: userEditForm.name,
-          position: userEditForm.position,
-          role: userEditForm.role
+      // 判断是否本地账号（id 非 UUID 格式，如 admin1/sales1/caroline1）
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(editingUserId.value)
+      if (!isUuid) {
+        // 本地账号：直接更新本地数据，不调用 Supabase
+        const updates = {
+          username: userEditForm.username,
+          name: userEditForm.name,
+          role: userEditForm.role,
+          position: userEditForm.position
         }
-      })
-      if (result.success) {
-        alert('更新成功')
-        closeUserDialog()
-        await loadAccounts()
+        if (userEditForm.password) {
+          updates.password = userEditForm.password
+        }
+        const result = updateAuthUser(editingUserId.value, updates)
+        if (result.success) {
+          alert('更新成功')
+          closeUserDialog()
+          await loadAccounts()
+        } else {
+          alert('更新失败：' + result.error)
+        }
       } else {
-        alert('更新失败：' + result.error)
+        const result = await updateAccount(editingUserId.value, {
+          email: userEditForm.username,
+          user_metadata: {
+            display_name: userEditForm.name,
+            position: userEditForm.position,
+            role: userEditForm.role
+          }
+        })
+        if (result.success) {
+          alert('更新成功')
+          closeUserDialog()
+          await loadAccounts()
+        } else {
+          alert('更新失败：' + result.error)
+        }
       }
     }
   } catch (error) {

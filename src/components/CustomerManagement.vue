@@ -3016,13 +3016,13 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 
 .payment-stats-bar {
   display: flex;
-  gap: 20px;
+  gap: 12px;
   margin-bottom: 15px;
   padding: 12px 16px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 8px;
   border: 1px solid #e2e8f0;
-  align-items: flex-start;
+  align-items: stretch;
   flex-wrap: wrap;
 }
 
@@ -3046,11 +3046,14 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 .stat-item {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 4px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 6px;
   background: #fff;
-  min-width: 160px;
+  flex: 1 1 0;
+  min-width: 170px;
+  white-space: nowrap;
 }
 
 .stat-total {
@@ -3086,9 +3089,12 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 }
 
 .stat-value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #1e293b;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-remaining .stat-value {
