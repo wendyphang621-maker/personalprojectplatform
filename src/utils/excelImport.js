@@ -136,6 +136,7 @@ function readCellAmount(cell) {
  * @param {Boolean} options.autoDetectHeader - 是否自动检测表头位置
  * @param {Array} options.dateFields - 日期字段名列表
  * @param {Array} options.amountFields - 金额字段名列表
+ * @param {Array} options.numericFields - 数字字段名列表（不做日期序列号转换）
  * @returns {Promise<Object>}
  */
 export async function importFromExcel(file, options = {}) {
@@ -149,7 +150,8 @@ export async function importFromExcel(file, options = {}) {
     warnOnUnmatched = true,
     autoDetectHeader = true,
     dateFields = [],
-    amountFields = []
+    amountFields = [],
+    numericFields = []
   } = options
 
   try {
@@ -310,6 +312,14 @@ export async function importFromExcel(file, options = {}) {
           if (currency && !rowCurrency) {
             rowCurrency = currency
           }
+        } else if (numericFields.includes(field)) {
+          // 数字字段（数量等）：直接读取数字，不做日期序列号转换
+          value = cell.value
+          if (value && typeof value === 'object') {
+            value = readCellValue(cell)
+          }
+          const num = Number(value)
+          value = isNaN(num) ? value : num
         } else {
           value = readCellValue(cell)
           if (typeof value === 'number') {

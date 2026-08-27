@@ -233,6 +233,20 @@
           <span class="stat-value">{{ urgentDeliveryCount }} 个订单 / 待收 {{ formatMoney(sumUrgentUnpaidAmount) }}</span>
         </div>
       </div>
+      <div class="row-legend">
+        <span class="legend-item">
+          <span class="legend-color legend-remaining"></span>
+          红色底色 = 该订单尾款未结清
+        </span>
+        <span class="legend-item">
+          <span class="legend-color legend-pending"></span>
+          橙色底色 = 该笔付款未到账
+        </span>
+        <span class="legend-item">
+          <el-icon style="color: #e6a23c;"><Warning /></el-icon>
+          交货日期旁警告图标 = 近7天到期需催款（点击上方催款提醒可筛选）
+        </span>
+      </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="id" label="记录ID" width="100" />
@@ -1275,7 +1289,7 @@ const currencyOptions = [
 ]
 
 function getCurrencySymbol(currency) {
-  if (!currency) return '¥'
+  if (!currency) return '$' // 默认货币为 USD
   const found = currencyOptions.find(c => c.value === currency)
   return found ? found.symbol : (currency + ' ')
 }
@@ -2377,7 +2391,8 @@ async function handlePaymentImport(event) {
     startRow: 3,
     autoDetectHeader: true,
     dateFields: getPaymentDateFields(),
-    amountFields: getPaymentAmountFields()
+    amountFields: getPaymentAmountFields(),
+    numericFields: ['quantity', 'unitPrice', 'orderAmount', 'paymentAmount']
   })
 
   if (!result.success) {
@@ -3077,6 +3092,40 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.row-legend {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 6px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+  font-size: 12px;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-color {
+  display: inline-block;
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid #e5e7eb;
+}
+
+.legend-remaining {
+  background: #fef0f0;
+}
+
+.legend-pending {
+  background: #fff7ed;
 }
 
 :deep(.payment-remaining-row) {
