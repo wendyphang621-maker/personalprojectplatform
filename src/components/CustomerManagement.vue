@@ -218,9 +218,13 @@
           <span class="stat-label">已到账</span>
           <span class="stat-value">{{ settledPaymentCount }} 笔 / {{ formatMoney(sumSettledAmount) }}</span>
         </div>
+        <div class="stat-item stat-unpaid">
+          <span class="stat-label">🔴 未付款订单</span>
+          <span class="stat-value">{{ unpaidOrderCount }} 个订单 / {{ formatMoney(sumUnpaidOrderAmount) }}</span>
+        </div>
         <div class="stat-item stat-remaining">
-          <span class="stat-label">⚠️ 未结清尾款</span>
-          <span class="stat-value">{{ statsRemainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
+          <span class="stat-label">🟠 部分付款未结清</span>
+          <span class="stat-value">{{ partiallyPaidOrderCount }} 个订单 / 待收 {{ formatMoney(sumRemainingAmount) }}</span>
         </div>
         <div 
           class="stat-item stat-warning" 
@@ -1562,6 +1566,25 @@ const filteredOrderSettlementMap = computed(() => {
 
 const statsRemainingOrderCount = computed(() => {
   return Object.values(filteredOrderSettlementMap.value).filter(s => s.hasRemaining).length
+})
+
+// 完全未付款的订单数（没有任何到账记录，按订单编号区分，同客户多订单互不合并）
+const unpaidOrderCount = computed(() => {
+  return Object.values(filteredOrderSettlementMap.value)
+    .filter(s => s.orderAmount > 0 && s.paidAmount === 0).length
+})
+
+// 完全未付款订单的订单总金额
+const sumUnpaidOrderAmount = computed(() => {
+  return Object.values(filteredOrderSettlementMap.value)
+    .filter(s => s.orderAmount > 0 && s.paidAmount === 0)
+    .reduce((sum, s) => sum + s.orderAmount, 0)
+})
+
+// 部分付款但未结清的订单数
+const partiallyPaidOrderCount = computed(() => {
+  return Object.values(filteredOrderSettlementMap.value)
+    .filter(s => s.paidAmount > 0 && s.hasRemaining).length
 })
 
 const sumSettledAmount = computed(() => {
@@ -3038,9 +3061,22 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
   border-left: 4px solid #67c23a;
 }
 
-.stat-remaining {
+.stat-unpaid {
   border-left: 4px solid #f56c6c;
   background: #fef0f0;
+}
+
+.stat-unpaid .stat-value {
+  color: #c45656;
+}
+
+.stat-remaining {
+  border-left: 4px solid #e6a23c;
+  background: #fdf6ec;
+}
+
+.stat-remaining .stat-value {
+  color: #b88230;
 }
 
 .stat-label {
