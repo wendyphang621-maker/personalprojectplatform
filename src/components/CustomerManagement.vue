@@ -240,7 +240,7 @@
         </span>
         <span class="legend-item">
           <span class="legend-color legend-pending"></span>
-          橙色底色 = 该笔付款未到账
+          黄色底色 = 该笔付款未到账
         </span>
         <span class="legend-item">
           <el-icon style="color: #e6a23c;"><Warning /></el-icon>
@@ -3121,15 +3121,15 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 }
 
 .legend-remaining {
-  background: #fef0f0;
+  background: #fde2e2;
 }
 
 .legend-pending {
-  background: #fff7ed;
+  background: #fdf3d1;
 }
 
 :deep(.payment-remaining-row) {
-  background-color: #fef0f0 !important;
+  background-color: #fde2e2 !important;
 }
 
 :deep(.payment-remaining-row:hover > td) {
@@ -3137,11 +3137,11 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 }
 
 :deep(.payment-pending-row) {
-  background-color: #fff7ed !important;
+  background-color: #fdf3d1 !important;
 }
 
 :deep(.payment-pending-row:hover > td) {
-  background-color: #ffedd5 !important;
+  background-color: #faebbf !important;
 }
 
 .search-bar {
