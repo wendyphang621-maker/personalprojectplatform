@@ -222,37 +222,62 @@
           <span class="stat-label">⚠️ 未结清尾款</span>
           <span class="stat-value">{{ statsRemainingOrderCount }} 个订单 / {{ formatMoney(sumRemainingAmount) }}</span>
         </div>
+        <div class="stat-item stat-warning" :class="{ 'stat-warning-active': urgentDeliveryCount > 0 }" v-if="urgentDeliveryCount > 0">
+          <span class="stat-label">🚨 催款提醒</span>
+          <span class="stat-value">{{ urgentDeliveryCount }} 个订单近7天到期</span>
+        </div>
       </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="id" label="记录ID" width="100" />
-        <el-table-column prop="customerName" label="客户姓名" width="110" />
-        <el-table-column prop="orderNo" label="订单编号" width="130" />
-        <el-table-column prop="orderDate" label="订单日期" width="110" />
-        <el-table-column prop="productName" label="产品名称" width="130" />
-        <el-table-column prop="specModel" label="规格型号" width="130" />
-        <el-table-column prop="currency" label="币种" width="80">
+        <el-table-column prop="customerName" label="客户姓名" width="100" />
+        <el-table-column prop="orderNo" label="订单编号" width="120" />
+        <el-table-column prop="orderDate" label="订单日期" width="100" />
+        <el-table-column prop="productName" label="产品名称" width="110" />
+        <el-table-column prop="specModel" label="规格型号" width="100" />
+        <el-table-column prop="color" label="颜色" width="90" />
+        <el-table-column prop="currency" label="币种" width="70">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}</template>
         </el-table-column>
-        <el-table-column prop="quantity" label="数量" width="80" />
+        <el-table-column prop="quantity" label="数量" width="70" />
         <el-table-column prop="unitPrice" label="单价" width="80">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.unitPrice?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="orderAmount" label="订单金额" width="110">
+        <el-table-column prop="orderAmount" label="订单金额" width="100">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.orderAmount?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="deliveryDate" label="交货日期" width="110" />
-        <el-table-column prop="paymentBatch" label="付款批次" width="90" />
-        <el-table-column prop="paymentType" label="付款类型" width="90">
+        <el-table-column label="交货日期" width="110">
+          <template #default="{ row }">
+            <span :class="{ 'reminder-date': isNearDeliveryDate(row.deliveryDate) && getRecordSettlementStatus(row) !== 'settled' }">
+              {{ row.deliveryDate }}
+            </span>
+            <el-tooltip v-if="isNearDeliveryDate(row.deliveryDate) && getRecordSettlementStatus(row) !== 'settled'" :content="getDeliveryReminder(row.deliveryDate)" placement="top">
+              <el-icon style="color: #e6a23c; margin-left: 4px;"><Warning /></el-icon>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column prop="paymentBatch" label="付款批次" width="80" />
+        <el-table-column prop="paymentType" label="付款类型" width="80">
           <template #default="{ row }">
             <el-tag :type="row.paymentType === '尾款' ? 'warning' : ''" size="small">{{ row.paymentType }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="paymentDate" label="付款日期" width="110" />
-        <el-table-column prop="paymentAmount" label="付款金额" width="120">
+        <el-table-column prop="paymentRatio" label="付款比例" width="90">
+          <template #default="{ row }">
+            <el-progress
+              :percentage="parsePaymentRatio(row.paymentRatio)"
+              :stroke-width="14"
+              :color="getProgressColor(parsePaymentRatio(row.paymentRatio))"
+              :text-inside="true"
+              style="width: 70px;"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="paymentDate" label="付款日期" width="100" />
+        <el-table-column prop="paymentAmount" label="付款金额" width="110">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.paymentAmount?.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="paymentMethod" label="付款方式" width="110" />
+        <el-table-column prop="paymentMethod" label="付款方式" width="100" />
         <el-table-column label="到账状态" width="140">
           <template #default="{ row }">
             <el-tag
@@ -610,6 +635,15 @@
         <el-form-item label="规格型号">
           <el-input v-model="paymentForm.specModel" />
         </el-form-item>
+        <el-form-item label="颜色">
+          <el-input v-model="paymentForm.color" placeholder="如 Black / Blue Black" />
+        </el-form-item>
+        <el-form-item label="内存配置">
+          <el-input v-model="paymentForm.memoryConfig" placeholder="如 4+128 / 6+256" />
+        </el-form-item>
+        <el-form-item label="型号">
+          <el-input v-model="paymentForm.model" placeholder="如 HTC E7" />
+        </el-form-item>
         <el-form-item label="数量">
           <el-input-number v-model="paymentForm.quantity" :min="0" style="width: 100%" />
         </el-form-item>
@@ -637,6 +671,9 @@
             <el-option label="尾款" value="尾款" />
             <el-option label="全款" value="全款" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="付款比例">
+          <el-input v-model="paymentForm.paymentRatio" placeholder="如 30% 或 30" style="width: 100%" />
         </el-form-item>
         <el-form-item label="付款日期">
           <el-date-picker v-model="paymentForm.paymentDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
@@ -689,6 +726,18 @@
           <el-checkbox v-model="batchEditFields.deliveryDate">批量修改交货日期</el-checkbox>
           <el-date-picker v-if="batchEditFields.deliveryDate" v-model="batchEditData.deliveryDate" type="date" placeholder="选择日期" style="width: 100%; margin-top: 8px;" value-format="YYYY-MM-DD" />
         </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.color">批量修改颜色</el-checkbox>
+          <el-input v-if="batchEditFields.color" v-model="batchEditData.color" placeholder="如 Black / Blue Black" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.memoryConfig">批量修改内存配置</el-checkbox>
+          <el-input v-if="batchEditFields.memoryConfig" v-model="batchEditData.memoryConfig" placeholder="如 4+128 / 6+256" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.model">批量修改型号</el-checkbox>
+          <el-input v-if="batchEditFields.model" v-model="batchEditData.model" placeholder="如 HTC E7" style="width: 100%; margin-top: 8px;" />
+        </el-form-item>
         
         <el-divider content-position="left">金额与数量</el-divider>
         <el-form-item>
@@ -708,14 +757,18 @@
         <el-form-item>
           <el-checkbox v-model="batchEditFields.paymentBatch">批量修改付款批次</el-checkbox>
           <el-select v-if="batchEditFields.paymentBatch" v-model="batchEditData.paymentBatch" placeholder="选择批次" style="width: 100%; margin-top: 8px;">
-            <el-option v-for="b in ['第一批', '第二批', '第三批', '尾款']" :key="b" :label="b" :value="b" />
+            <el-option v-for="b in ['第1笔', '第2笔', '第3笔', '第4笔', '尾款']" :key="b" :label="b" :value="b" />
           </el-select>
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="batchEditFields.paymentType">批量修改付款类型</el-checkbox>
           <el-select v-if="batchEditFields.paymentType" v-model="batchEditData.paymentType" placeholder="选择类型" style="width: 100%; margin-top: 8px;">
-            <el-option v-for="t in ['订金', '预付款', '发货款', '尾款']" :key="t" :label="t" :value="t" />
+            <el-option v-for="t in ['定金', '尾款', '全款']" :key="t" :label="t" :value="t" />
           </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="batchEditFields.paymentRatio">批量修改付款比例</el-checkbox>
+          <el-input v-if="batchEditFields.paymentRatio" v-model="batchEditData.paymentRatio" placeholder="如 30% 或 30" style="width: 100%; margin-top: 8px;" />
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="batchEditFields.paymentDate">批量修改付款日期</el-checkbox>
@@ -751,7 +804,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showPaymentPreviewDialog" title="付款记录预览" width="1000px" :close-on-click-modal="false">
+    <el-dialog v-model="showPaymentPreviewDialog" title="付款记录预览" width="1200px" :close-on-click-modal="false">
       <div class="preview-container">
         <div class="preview-header">
           <h2>客户付款记录</h2>
@@ -765,11 +818,15 @@
                 <th>订单编号</th>
                 <th>产品名称</th>
                 <th>规格型号</th>
+                <th>颜色</th>
+                <th>型号</th>
+                <th>币种</th>
                 <th>订单金额</th>
                 <th>付款批次</th>
                 <th>付款类型</th>
+                <th>付款比例</th>
                 <th>付款金额</th>
-                <th>付款日期</th>
+                <th>交货日期</th>
                 <th>到账状态</th>
                 <th>备注</th>
               </tr>
@@ -780,11 +837,15 @@
                 <td>{{ p.orderNo || '-' }}</td>
                 <td>{{ p.productName || '-' }}</td>
                 <td>{{ p.specModel || '-' }}</td>
-                <td>{{ p.orderAmount ? '¥' + p.orderAmount.toLocaleString() : '-' }}</td>
+                <td>{{ p.color || '-' }}</td>
+                <td>{{ p.model || '-' }}</td>
+                <td>{{ getCurrencySymbol(p.currency) }}</td>
+                <td>{{ p.orderAmount ? p.orderAmount.toLocaleString() : '-' }}</td>
                 <td>{{ p.paymentBatch || '-' }}</td>
                 <td>{{ p.paymentType || '-' }}</td>
-                <td>{{ p.paymentAmount ? '¥' + p.paymentAmount.toLocaleString() : '-' }}</td>
-                <td>{{ p.paymentDate || '-' }}</td>
+                <td>{{ p.paymentRatio || '-' }}</td>
+                <td>{{ p.paymentAmount ? p.paymentAmount.toLocaleString() : '-' }}</td>
+                <td>{{ p.deliveryDate || '-' }}</td>
                 <td>{{ p.arrivalStatus || '-' }}</td>
                 <td>{{ p.remark || '-' }}</td>
               </tr>
@@ -811,7 +872,7 @@ import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync, getPaymentDateFields, getPaymentAmountFields } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase, deleteFromSupabase } from '../supabase.js'
-import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
+import { Document, ZoomIn, Plus, Warning } from '@element-plus/icons-vue'
 
 const props = defineProps({
   currentSubPage: {
@@ -873,11 +934,15 @@ const batchEditFields = reactive({
   currency: false,
   orderDate: false,
   deliveryDate: false,
+  color: false,
+  memoryConfig: false,
+  model: false,
   quantity: false,
   unitPrice: false,
   orderAmount: false,
   paymentBatch: false,
   paymentType: false,
+  paymentRatio: false,
   paymentDate: false,
   paymentAmount: false,
   paymentMethod: false,
@@ -888,11 +953,15 @@ const batchEditData = reactive({
   currency: '',
   orderDate: '',
   deliveryDate: '',
+  color: '',
+  memoryConfig: '',
+  model: '',
   quantity: null,
   unitPrice: null,
   orderAmount: null,
   paymentBatch: '',
   paymentType: '',
+  paymentRatio: '',
   paymentDate: '',
   paymentAmount: null,
   paymentMethod: '',
@@ -1030,17 +1099,21 @@ const paymentForm = reactive({
   id: '',
   customerId: '',
   customerName: '',
-  currency: 'CNY',
+  currency: 'USD',
   orderNo: '',
   orderDate: new Date().toISOString().split('T')[0],
   productName: '',
   specModel: '',
+  color: '',
+  memoryConfig: '',
+  model: '',
   quantity: 0,
   unitPrice: 0,
   orderAmount: 0,
   deliveryDate: '',
   paymentBatch: '第1笔',
   paymentType: '定金',
+  paymentRatio: '',
   paymentDate: new Date().toISOString().split('T')[0],
   paymentAmount: 0,
   paymentMethod: '银行转账',
@@ -1196,6 +1269,68 @@ function getRecordSettlementStatus(row) {
   return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
 }
 
+// 解析付款比例（支持字符串和数字格式）
+function parsePaymentRatio(ratio) {
+  if (!ratio && ratio !== 0) return 0
+  if (typeof ratio === 'number') {
+    return Math.min(100, Math.max(0, ratio))
+  }
+  if (typeof ratio === 'string') {
+    const num = parseInt(ratio.replace('%', ''))
+    return Math.min(100, Math.max(0, isNaN(num) ? 0 : num))
+  }
+  return 0
+}
+
+// 获取进度条颜色
+function getProgressColor(percentage) {
+  if (percentage >= 100) return '#67C23A'
+  if (percentage >= 70) return '#409EFF'
+  if (percentage >= 30) return '#E6A23C'
+  return '#F56C6C'
+}
+
+// 判断是否接近交货日期（提前7天提醒）
+function isNearDeliveryDate(deliveryDate) {
+  if (!deliveryDate) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const delivery = new Date(deliveryDate)
+  delivery.setHours(0, 0, 0, 0)
+  
+  const diffTime = delivery.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  // 7天内到期或已过期
+  return diffDays <= 7
+}
+
+// 获取交货日期提醒信息
+function getDeliveryReminder(deliveryDate) {
+  if (!deliveryDate) return ''
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const delivery = new Date(deliveryDate)
+  delivery.setHours(0, 0, 0, 0)
+  
+  const diffTime = delivery.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  if (diffDays < 0) {
+    return `⚠️ 已逾期 ${Math.abs(diffDays)} 天，请尽快催款！`
+  } else if (diffDays === 0) {
+    return `🔔 今日交货，请确认到账！`
+  } else if (diffDays <= 3) {
+    return `🔔 ${diffDays} 天后交货，请尽快催款！`
+  } else if (diffDays <= 7) {
+    return `⏰ ${diffDays} 天后交货，请及时跟进付款！`
+  }
+  return ''
+}
+
 const pendingPaymentCount = computed(() => {
   return filteredPayments.value.filter(p => getRecordSettlementStatus(p) !== 'settled').length
 })
@@ -1206,6 +1341,19 @@ const settledPaymentCount = computed(() => {
 
 const remainingOrderCount = computed(() => {
   return Object.values(orderSettlementMap.value).filter(s => s.hasRemaining).length
+})
+
+// 近7天到期且未结清的订单数量
+const urgentDeliveryCount = computed(() => {
+  const urgentOrders = new Set()
+  filteredPayments.value.forEach(p => {
+    if (p.deliveryDate && isNearDeliveryDate(p.deliveryDate) && getRecordSettlementStatus(p) !== 'settled') {
+      if (p.orderNo) {
+        urgentOrders.add(p.orderNo)
+      }
+    }
+  })
+  return urgentOrders.size
 })
 
 const statsDisplayCurrency = ref('')
@@ -1630,16 +1778,21 @@ function handleAddPayment() {
     id: '',
     customerId: '',
     customerName: '',
+    currency: 'USD',
     orderNo: '',
     orderDate: new Date().toISOString().split('T')[0],
     productName: '',
     specModel: '',
+    color: '',
+    memoryConfig: '',
+    model: '',
     quantity: 0,
     unitPrice: 0,
     orderAmount: 0,
     deliveryDate: '',
     paymentBatch: '第1笔',
     paymentType: '定金',
+    paymentRatio: '',
     paymentDate: new Date().toISOString().split('T')[0],
     paymentAmount: 0,
     paymentMethod: '银行转账',
@@ -1771,20 +1924,24 @@ function previewPayments() {
 }
 
 function exportPayments() {
-  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '币种', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
+  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '颜色', '内存配置', '型号', '币种', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款比例', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
   const data = filteredPayments.value.map(p => [
     p.customerName || '',
     p.orderNo || '',
     p.orderDate || '',
     p.productName || '',
     p.specModel || '',
-    p.currency || 'CNY',
+    p.color || '',
+    p.memoryConfig || '',
+    p.model || '',
+    p.currency || 'USD',
     p.quantity || 0,
     p.unitPrice || 0,
     p.orderAmount || 0,
     p.deliveryDate || '',
     p.paymentBatch || '',
     p.paymentType || '',
+    p.paymentRatio || '',
     p.paymentDate || '',
     p.paymentAmount || 0,
     p.paymentMethod || '',
@@ -2723,6 +2880,30 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 
 .stat-remaining .stat-value {
   color: #c45656;
+}
+
+.stat-warning {
+  border-left: 4px solid #e6a23c;
+  background: #fdf6ec;
+  animation: pulse-warning 2s infinite;
+}
+
+.stat-warning .stat-value {
+  color: #b88230;
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(230, 162, 60, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(230, 162, 60, 0);
+  }
+}
+
+.reminder-date {
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 :deep(.payment-remaining-row) {
