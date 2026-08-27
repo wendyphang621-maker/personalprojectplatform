@@ -358,7 +358,7 @@ function createDefaultAuth() {
     users: [
       { id: 'admin1', username: 'admin', password: 'Admin@123', role: 'admin', position: '管理员', createdAt: '2024-01-01' },
       { id: 'sales1', username: 'sales', password: 'Sales@123', role: 'sales_assistant', position: '销售助理', createdAt: '2024-01-01' },
-      { id: 'caroline1', username: 'Caroline', password: 'Caroline@123', role: 'sales_assistant', position: '销售经理', createdAt: '2024-01-01', name: 'Caroline' }
+      { id: 'caroline1', username: 'Caroline', password: 'Caroline@123', role: 'admin', position: '管理员', createdAt: '2024-01-01', name: 'Caroline' }
     ],
     currentUser: null,
     authVersion: DATA_VERSION
