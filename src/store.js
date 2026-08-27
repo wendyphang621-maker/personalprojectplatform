@@ -134,10 +134,10 @@ const defaultData = {
   ],
   
   productModels: [
-    { id: 'pm1', name: 'E7 Elite', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'CB', 'SASO'], renderImagePath: '', supplierId: 'sup1' },
-    { id: 'pm2', name: 'NE75', chip: 'MTK6771', screen: '6.2英寸 LCD', certifications: ['CE', 'CB'], renderImagePath: '', supplierId: 'sup2' },
-    { id: 'pm3', name: 'NE76', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'SASO'], renderImagePath: '', supplierId: 'sup1' },
-    { id: 'pm4', name: 'MTK6500', chip: 'MTK6580', screen: '5.5英寸 LCD', certifications: ['CE'], renderImagePath: '', supplierId: 'sup3' }
+    { id: 'pm1', name: 'E7 Elite', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'CB', 'SASO'], renderImagePath: '', supplierId: 'sup1', memoryConfigs: ['4+128', '6+128', '8+256', '12+256'] },
+    { id: 'pm2', name: 'NE75', chip: 'MTK6771', screen: '6.2英寸 LCD', certifications: ['CE', 'CB'], renderImagePath: '', supplierId: 'sup2', memoryConfigs: ['4+64', '4+128', '6+128'] },
+    { id: 'pm3', name: 'NE76', chip: 'MTK6789', screen: '6.5英寸 AMOLED', certifications: ['CE', 'SASO'], renderImagePath: '', supplierId: 'sup1', memoryConfigs: ['6+128', '8+256', '6+256'] },
+    { id: 'pm4', name: 'MTK6500', chip: 'MTK6580', screen: '5.5英寸 LCD', certifications: ['CE'], renderImagePath: '', supplierId: 'sup3', memoryConfigs: ['4+64', '4+128'] }
   ],
   
   certRecords: [

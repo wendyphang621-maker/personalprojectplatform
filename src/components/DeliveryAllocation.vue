@@ -212,16 +212,14 @@
               <el-select
                 v-model="form.poNumber"
                 filterable
-                allow-create
-                default-first-option
-                placeholder="选择或输入订单编号"
+                placeholder="选择订单编号"
                 @change="onPoChange"
                 style="width: 100%"
               >
                 <el-option
                   v-for="o in poOptions"
                   :key="o.id"
-                  :label="o.id"
+                  :label="`${o.id} | ${o.model} | ${o.qty}件 | 已出货${o.deliveredQty} | 剩余${o.remainingQty}`"
                   :value="o.id"
                 />
               </el-select>
@@ -250,9 +248,17 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="型号" prop="model">
-              <el-select v-model="form.model" filterable placeholder="选择型号" @change="onModelChange" style="width: 100%">
-                <el-option v-for="m in allModelOptions" :key="m" :label="m" :value="m" />
+              <el-select 
+                v-model="form.model" 
+                filterable 
+                placeholder="选择型号" 
+                @change="onModelChange" 
+                style="width: 100%"
+                :disabled="!!form.poNumber"
+              >
+                <el-option v-for="m in filteredModelOptions" :key="m" :label="m" :value="m" />
               </el-select>
+              <div v-if="form.poNumber" class="form-tip">已根据订单自动锁定型号</div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -264,9 +270,17 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="内存配置">
-              <el-select v-model="form.memoryConfig" filterable allow-create placeholder="如：4+128, 6+128" style="width: 100%">
-                <el-option v-for="c in memoryConfigOptions" :key="c" :label="c" :value="c" />
+              <el-select 
+                v-model="form.memoryConfig" 
+                filterable 
+                allow-create 
+                placeholder="如：4+128, 6+128" 
+                style="width: 100%"
+                :disabled="!form.model"
+              >
+                <el-option v-for="c in filteredMemoryConfigOptions" :key="c" :label="c" :value="c" />
               </el-select>
+              <div v-if="!form.model" class="form-tip">请先选择型号</div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -611,13 +625,56 @@ const allModelOptions = computed(() => {
 })
 
 const poOptions = computed(() => {
-  return store.salesOrders.filter(o => o.status !== 'completed').map(o => ({
-    id: o.id,
-    customerName: o.customerName,
-    model: o.model,
-    qty: o.qty,
-    status: o.status
-  }))
+  return store.salesOrders.filter(o => o.status !== 'completed').map(o => {
+    // 计算该订单的已出货数量
+    const deliveredQty = store.deliveryAllocations
+      .filter(a => a.poNumber === o.id)
+      .reduce((sum, a) => sum + (a.allocatedQty || 0), 0)
+    const remainingQty = (o.qty || 0) - deliveredQty
+    
+    return {
+      id: o.id,
+      customerName: o.customerName,
+      model: o.model,
+      qty: o.qty,
+      status: o.status,
+      deliveredQty,
+      remainingQty,
+      // 如果该订单已完成所有出货，则标记为 completed
+      allDelivered: remainingQty <= 0
+    }
+  }).filter(o => !o.allDelivered) // 只显示未完成的订单
+})
+
+// 基于所选订单的型号选项（只显示订单中存在的型号）
+const filteredModelOptions = computed(() => {
+  if (!form.poNumber) {
+    return allModelOptions.value
+  }
+  
+  const order = poOptions.value.find(o => o.id === form.poNumber)
+  if (!order) {
+    return allModelOptions.value
+  }
+  
+  // 只显示该订单的型号
+  return [order.model]
+})
+
+// 基于型号的内存配置选项
+const filteredMemoryConfigOptions = computed(() => {
+  if (!form.model) {
+    return memoryConfigOptions
+  }
+  
+  // 从产品型号库中查找该型号支持的内存配置
+  const product = store.productModels.find(p => p.name === form.model)
+  if (product && product.memoryConfigs && product.memoryConfigs.length > 0) {
+    return product.memoryConfigs
+  }
+  
+  // 默认返回所有内存配置选项
+  return memoryConfigOptions
 })
 
 const selectAllState = computed(() => {
@@ -820,17 +877,51 @@ function onCustomerChange(name) {
 function onPoChange(poId) {
   const order = poOptions.value.find(o => o.id === poId)
   if (order) {
+    // 填充客户信息
     form.customerName = order.customerName
+    
+    // 自动锁定型号
     form.model = order.model
-    form.orderQty = order.qty
+    
+    // 设置订单数量为剩余未出货数量
+    form.orderQty = order.remainingQty > 0 ? order.remainingQty : order.qty
+    form.allocatedQty = 0
+    
+    // 自动选择产品名称
+    const product = store.productModels.find(p => p.name === order.model)
+    if (product) {
+      form.productName = '智能手机主机'
+    }
+    
+    // 重置内存配置（需要用户重新选择）
+    form.memoryConfig = ''
+    form.specModel = ''
+    
+    // 触发客户变更逻辑
     onCustomerChange(order.customerName)
+    
+    // 显示提示
+    if (order.deliveredQty > 0) {
+      ElMessage.info(`订单已出货 ${order.deliveredQty} 件，剩余 ${order.remainingQty} 件待出货`)
+    }
   }
 }
 
 function onModelChange(model) {
+  if (!model) {
+    form.memoryConfig = ''
+    return
+  }
+  
+  // 自动填充硬件配置
   const product = store.productModels.find(p => p.name === model)
   if (product) {
-    form.hwConfig = form.hwConfig || ''
+    form.hwConfig = `${product.chip || ''} / ${product.screen || ''}`
+    
+    // 如果该型号支持的内存配置只有一个，自动选中
+    if (product.memoryConfigs && product.memoryConfigs.length === 1) {
+      form.memoryConfig = product.memoryConfigs[0]
+    }
   }
 }
 
@@ -1325,6 +1416,13 @@ watch(() => store.deliveryAllocations, () => {}, { deep: true })
 </script>
 
 <style scoped>
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
 .delivery-allocation {
   height: 100%;
   display: flex;
