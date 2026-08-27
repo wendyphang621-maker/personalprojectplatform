@@ -1,18 +1,21 @@
 <template>
   <div class="delivery-allocation">
     <div class="search-bar">
-      <el-input v-model="filterPo" placeholder="PO编号" clearable style="width: 160px" />
-      <el-input v-model="filterPoCi" placeholder="CI编号" clearable style="width: 160px" />
-      <el-select v-model="filterModel" placeholder="机型" clearable style="width: 130px">
+      <el-input v-model="filterPo" placeholder="订单编号" clearable style="width: 160px" />
+      <el-input v-model="filterPoCi" placeholder="CI编号" clearable style="width: 140px" />
+      <el-select v-model="filterProductName" placeholder="产品名称" clearable style="width: 130px">
+        <el-option v-for="p in productNameOptions" :key="p" :label="p" :value="p" />
+      </el-select>
+      <el-select v-model="filterModel" placeholder="型号" clearable style="width: 130px">
         <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
       </el-select>
-      <el-select v-model="filterCustomer" placeholder="客户" clearable style="width: 140px">
+      <el-select v-model="filterCustomer" placeholder="客户" clearable style="width: 120px">
         <el-option v-for="c in customerOptions" :key="c" :label="c" :value="c" />
       </el-select>
-      <el-select v-model="filterCountry" placeholder="目的国家" clearable style="width: 130px">
+      <el-select v-model="filterCountry" placeholder="国家" clearable style="width: 110px">
         <el-option v-for="c in countryOptions" :key="c" :label="c" :value="c" />
       </el-select>
-      <el-select v-model="filterLogistics" placeholder="物流方式" clearable style="width: 130px">
+      <el-select v-model="filterLogistics" placeholder="物流方式" clearable style="width: 120px">
         <el-option v-for="l in logisticsOptions" :key="l" :label="l" :value="l" />
       </el-select>
       <el-select v-model="filterStatus" placeholder="订单状态" clearable style="width: 120px">
@@ -20,7 +23,16 @@
         <el-option label="部分分配" value="partial" />
         <el-option label="已完成" value="completed" />
       </el-select>
+      <el-select v-model="filterProductionStatus" placeholder="生产状态" clearable style="width: 110px">
+        <el-option label="未生产" value="未生产" />
+        <el-option label="生产中" value="生产中" />
+        <el-option label="已发货" value="已发货" />
+        <el-option label="已完成" value="已完成" />
+      </el-select>
       <el-button type="primary" @click="resetFilters">重置</el-button>
+      <el-button @click="showAdvancedColumns = !showAdvancedColumns">
+        {{ showAdvancedColumns ? '收起详情' : '展开详情' }}
+      </el-button>
       <div class="spacer"></div>
       <el-button type="primary" @click="handleAdd">新增分配</el-button>
       <el-button @click="downloadTemplate">下载模板</el-button>
@@ -53,96 +65,121 @@
     >
       <el-table-column type="selection" width="45" reserve-selection />
       <el-table-column prop="id" label="分配编号" width="130" fixed />
-      <el-table-column prop="poNumber" label="PO编号" width="130">
+      <el-table-column prop="poNumber" label="订单编号" width="140">
         <template #default="{ row }">
           <el-tooltip :content="row.poNumber" placement="top">
             <span>{{ row.poNumber }}</span>
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column prop="ciNumber" label="CI编号" width="130">
+      <el-table-column prop="orderDate" label="订单日期" width="110">
         <template #default="{ row }">
-          <span>{{ row.ciNumber || '-' }}</span>
+          <span>{{ row.orderDate || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="customerName" label="客户名称" width="110" />
-      <el-table-column prop="customerGroup" label="客户分组" width="130">
+      <el-table-column prop="productName" label="产品名称" width="110">
         <template #default="{ row }">
-          <el-tag size="small" type="info">{{ row.customerGroup || '-' }}</el-tag>
+          <span>{{ row.productName || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="model" label="机型" width="100" />
-      <el-table-column prop="hwConfig" label="硬件配置+颜色" width="140">
+      <el-table-column prop="model" label="型号" width="110">
         <template #default="{ row }">
-          <span>{{ row.hwConfig || '-' }}</span>
+          <span>{{ row.model || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="plugSpec" label="插头规格" width="100">
+      <el-table-column prop="specModel" label="规格型号" width="160" show-overflow-tooltip>
         <template #default="{ row }">
-          <el-tag size="small">{{ row.plugSpec || '-' }}</el-tag>
+          <span>{{ row.specModel || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="orderQty" label="订单总数量" width="100" align="right">
+      <el-table-column prop="memoryConfig" label="内存配置" width="100">
+        <template #default="{ row }">
+          <span>{{ row.memoryConfig || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="orderQty" label="数量" width="90" align="right">
         <template #default="{ row }">
           <span>{{ row.orderQty || 0 }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="allocatedQty" label="本次分配数量" width="110" align="right">
+      <el-table-column prop="destinationCountry" label="国家" width="90">
+        <template #default="{ row }">
+          <span>{{ row.destinationCountry || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="plugSpec" label="插头" width="80">
+        <template #default="{ row }">
+          <el-tag size="small">{{ row.plugSpec || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="promisedDate" label="承诺交期" width="110">
+        <template #default="{ row }">
+          <span>{{ row.promisedDate || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="productionStatus" label="生产完成" width="100">
+        <template #default="{ row }">
+          <el-tag 
+            size="small" 
+            :type="getProductionStatusType(row.productionStatus)"
+          >{{ row.productionStatus || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="warehouseStatus" label="入库" width="100">
+        <template #default="{ row }">
+          <el-tag 
+            size="small" 
+            :type="getWarehouseStatusType(row.warehouseStatus)"
+          >{{ row.warehouseStatus || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="ciNumber" label="CI编号" width="130" v-if="showAdvancedColumns">
+        <template #default="{ row }">
+          <span>{{ row.ciNumber || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="customerName" label="客户名称" width="110" v-if="showAdvancedColumns" />
+      <el-table-column prop="customerGroup" label="客户分组" width="130" v-if="showAdvancedColumns">
+        <template #default="{ row }">
+          <el-tag size="small" type="info">{{ row.customerGroup || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="hwConfig" label="硬件配置+颜色" width="140" v-if="showAdvancedColumns">
+        <template #default="{ row }">
+          <span>{{ row.hwConfig || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="allocatedQty" label="本次分配数量" width="110" align="right" v-if="showAdvancedColumns">
         <template #default="{ row }">
           <span class="text-primary">{{ row.allocatedQty || 0 }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="欠货数量" width="100" align="right">
+      <el-table-column label="欠货数量" width="100" align="right" v-if="showAdvancedColumns">
         <template #default="{ row }">
           <span :class="{ 'text-danger': getShortage(row) > 0 }">{{ getShortage(row) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="warehouse" label="发货仓库" width="100">
+      <el-table-column prop="warehouse" label="发货仓库" width="100" v-if="showAdvancedColumns">
         <template #default="{ row }">
           <span>{{ row.warehouse || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="logistics" label="物流渠道" width="110">
+      <el-table-column prop="logistics" label="物流渠道" width="110" v-if="showAdvancedColumns">
         <template #default="{ row }">
           <el-tag size="small" :type="getLogisticsTagType(row.logistics)">{{ row.logistics || '-' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="saudiQty" label="沙特" width="80" align="right">
-        <template #default="{ row }">
-          <span>{{ row.saudiQty || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="uaeQty" label="阿联酋" width="80" align="right">
-        <template #default="{ row }">
-          <span>{{ row.uaeQty || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="omanQty" label="阿曼/巴林/科威特" width="130" align="right">
-        <template #default="{ row }">
-          <span>{{ row.omanQty || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="qatarQty" label="卡塔尔" width="80" align="right">
-        <template #default="{ row }">
-          <span>{{ row.qatarQty || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="lebanonQty" label="黎巴嫩" width="80" align="right">
-        <template #default="{ row }">
-          <span>{{ row.lebanonQty || 0 }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="certRemark" label="清关认证备注" width="160" show-overflow-tooltip>
+      <el-table-column prop="certRemark" label="清关认证备注" width="160" show-overflow-tooltip v-if="showAdvancedColumns">
         <template #default="{ row }">
           <span>{{ row.certRemark || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="isSample" label="是否样机" width="90">
+      <el-table-column prop="isSample" label="是否样机" width="90" v-if="showAdvancedColumns">
         <template #default="{ row }">
           <el-tag size="small" :type="row.isSample === '是' ? 'warning' : 'info'">{{ row.isSample || '否' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="remark" label="备注" width="140" show-overflow-tooltip>
+      <el-table-column prop="remark" label="备注" width="140" show-overflow-tooltip v-if="showAdvancedColumns">
         <template #default="{ row }">
           <span>{{ row.remark || '-' }}</span>
         </template>
@@ -159,34 +196,25 @@
     <el-dialog
       v-model="showFormDialog"
       :title="isEditing ? '编辑出货分配' : '新增出货分配'"
-      width="800px"
+      width="900px"
       :close-on-click-modal="false"
       destroy-on-close
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="130px" :disabled="formDisabled">
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col :span="8">
             <el-form-item label="分配编号">
               <el-input v-model="form.id" disabled placeholder="自动生成" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="客户名称" prop="customerName">
-              <el-select v-model="form.customerName" filterable placeholder="选择客户" @change="onCustomerChange" style="width: 100%">
-                <el-option v-for="c in allCustomerOptions" :key="c.name" :label="c.name" :value="c.name" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="PO编号" prop="poNumber">
+          <el-col :span="8">
+            <el-form-item label="订单编号" prop="poNumber">
               <el-select
                 v-model="form.poNumber"
                 filterable
                 allow-create
                 default-first-option
-                placeholder="选择或输入PO编号"
+                placeholder="选择或输入订单编号"
                 @change="onPoChange"
                 style="width: 100%"
               >
@@ -199,57 +227,159 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="CI编号" prop="ciNumber">
-              <el-input v-model="form.ciNumber" placeholder="请输入CI编号" />
+          <el-col :span="8">
+            <el-form-item label="订单日期">
+              <el-date-picker
+                v-model="form.orderDate"
+                type="date"
+                placeholder="选择日期"
+                format="YYYY/MM/DD"
+                value-format="YYYY/MM/DD"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="客户分组">
-              <el-input v-model="form.customerGroup" disabled placeholder="选择客户后自动填充" />
+          <el-col :span="8">
+            <el-form-item label="产品名称" prop="productName">
+              <el-select v-model="form.productName" filterable placeholder="选择产品" style="width: 100%">
+                <el-option v-for="p in productNameOptions" :key="p" :label="p" :value="p" />
+              </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="目的国家">
-              <el-input v-model="form.destinationCountry" disabled placeholder="选择客户后自动填充" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="机型" prop="model">
-              <el-select v-model="form.model" filterable placeholder="选择机型" @change="onModelChange" style="width: 100%">
+          <el-col :span="8">
+            <el-form-item label="型号" prop="model">
+              <el-select v-model="form.model" filterable placeholder="选择型号" @change="onModelChange" style="width: 100%">
                 <el-option v-for="m in allModelOptions" :key="m" :label="m" :value="m" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="硬件配置+颜色">
-              <el-input v-model="form.hwConfig" placeholder="例如：8+256G 黑色" />
+          <el-col :span="8">
+            <el-form-item label="规格型号">
+              <el-input v-model="form.specModel" placeholder="如：Black, Blue Black等" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="插头规格" prop="plugSpec">
+          <el-col :span="8">
+            <el-form-item label="内存配置">
+              <el-select v-model="form.memoryConfig" filterable allow-create placeholder="如：4+128, 6+128" style="width: 100%">
+                <el-option v-for="c in memoryConfigOptions" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="数量" prop="orderQty">
+              <el-input-number v-model="form.orderQty" :min="0" :step="10" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="国家">
+              <el-select v-model="form.destinationCountry" filterable placeholder="选择国家" style="width: 100%">
+                <el-option v-for="c in countryOptions" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="插头" prop="plugSpec">
               <el-select
                 v-model="form.plugSpec"
                 :disabled="isMiddleEastCountry(form.destinationCountry)"
                 placeholder="选择插头规格"
                 style="width: 100%"
               >
-                <el-option label="英规 (BS)" value="英规" />
-                <el-option label="欧规 (CEE)" value="欧规" />
-                <el-option label="美规 (NEMA)" value="美规" />
-                <el-option label="中规 (GB)" value="中规" />
-                <el-option label="印度规 (IS)" value="印度规" />
-                <el-option label="南非规 (SANS)" value="南非规" />
+                <el-option label="英规" value="英规" />
+                <el-option label="欧规" value="欧规" />
+                <el-option label="美规" value="美规" />
+                <el-option label="中规" value="中规" />
+                <el-option label="印度规" value="印度规" />
+                <el-option label="南非规" value="南非规" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="8">
+            <el-form-item label="承诺交期">
+              <el-date-picker
+                v-model="form.promisedDate"
+                type="date"
+                placeholder="选择交期"
+                format="M月D日"
+                value-format="M月D日"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="生产完成">
+              <el-select v-model="form.productionStatus" placeholder="选择状态" style="width: 100%">
+                <el-option label="未生产" value="未生产" />
+                <el-option label="生产中" value="生产中" />
+                <el-option label="已发货" value="已发货" />
+                <el-option label="已完成" value="已完成" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="入库">
+              <el-select v-model="form.warehouseStatus" placeholder="选择入库状态" style="width: 100%">
+                <el-option label="未入库" value="未入库" />
+                <el-option label="部分入库" value="部分入库" />
+                <el-option label="已入库" value="已入库" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="客户名称">
+              <el-select v-model="form.customerName" filterable placeholder="选择客户" @change="onCustomerChange" style="width: 100%">
+                <el-option v-for="c in allCustomerOptions" :key="c.name" :label="c.name" :value="c.name" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="CI编号">
+              <el-input v-model="form.ciNumber" placeholder="请输入CI编号" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-divider content-position="left">详细信息</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="客户分组">
+              <el-input v-model="form.customerGroup" disabled placeholder="选择客户后自动填充" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="本次分配数量">
+              <el-input-number v-model="form.allocatedQty" :min="0" :step="10" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="欠货数量">
+              <el-input :model-value="getFormShortage()" disabled />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="发货仓库">
+              <el-select v-model="form.warehouse" placeholder="选择仓库" style="width: 100%">
+                <el-option label="深圳仓" value="深圳仓" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="物流渠道">
+              <el-select v-model="form.logistics" placeholder="选择物流方式" style="width: 100%">
+                <el-option v-for="l in logisticsOptions" :key="l" :label="l" :value="l" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
             <el-form-item label="是否样机">
               <el-radio-group v-model="form.isSample">
                 <el-radio value="否">否</el-radio>
@@ -260,39 +390,6 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="订单总数量" prop="orderQty">
-              <el-input-number v-model="form.orderQty" :min="0" :step="10" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="本次分配数量" prop="allocatedQty">
-              <el-input-number v-model="form.allocatedQty" :min="0" :step="10" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="欠货数量">
-              <el-input :model-value="getFormShortage()" disabled />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="发货仓库" prop="warehouse">
-              <el-select v-model="form.warehouse" placeholder="选择仓库" style="width: 100%">
-                <el-option label="深圳仓" value="深圳仓" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="物流渠道" prop="logistics">
-              <el-select v-model="form.logistics" placeholder="选择物流方式" style="width: 100%">
-                <el-option v-for="l in logisticsOptions" :key="l" :label="l" :value="l" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="清关认证备注">
               <el-input
                 :model-value="form.certRemark"
@@ -301,6 +398,11 @@
                 placeholder="选择目的国家后自动填充"
                 @click="onCertRemarkClick"
               />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="备注">
+              <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -339,9 +441,6 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="请输入备注信息" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showFormDialog = false">取消</el-button>
@@ -356,16 +455,26 @@
           <p>分配编号：{{ previewData.id }} | 预览时间：{{ currentDateTime }}</p>
         </div>
         <el-descriptions :column="3" border>
-          <el-descriptions-item label="分配编号" :span="1">{{ previewData.id }}</el-descriptions-item>
-          <el-descriptions-item label="PO编号" :span="1">{{ previewData.poNumber }}</el-descriptions-item>
-          <el-descriptions-item label="CI编号" :span="1">{{ previewData.ciNumber || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="客户名称">{{ previewData.customerName }}</el-descriptions-item>
+          <el-descriptions-item label="分配编号">{{ previewData.id }}</el-descriptions-item>
+          <el-descriptions-item label="订单编号">{{ previewData.poNumber }}</el-descriptions-item>
+          <el-descriptions-item label="订单日期">{{ previewData.orderDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="产品名称">{{ previewData.productName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="型号">{{ previewData.model }}</el-descriptions-item>
+          <el-descriptions-item label="规格型号">{{ previewData.specModel || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="内存配置">{{ previewData.memoryConfig || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="数量">{{ previewData.orderQty }}</el-descriptions-item>
+          <el-descriptions-item label="国家">{{ previewData.destinationCountry || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="插头">{{ previewData.plugSpec || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="承诺交期">{{ previewData.promisedDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="生产完成">{{ previewData.productionStatus || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="入库">{{ previewData.warehouseStatus || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="CI编号">{{ previewData.ciNumber || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="客户名称">{{ previewData.customerName || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        <el-divider content-position="left">详细信息</el-divider>
+        <el-descriptions :column="3" border>
           <el-descriptions-item label="客户分组">{{ previewData.customerGroup || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="目的国家">{{ previewData.destinationCountry || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="机型">{{ previewData.model }}</el-descriptions-item>
           <el-descriptions-item label="硬件配置+颜色">{{ previewData.hwConfig || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="插头规格">{{ previewData.plugSpec || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="订单总数量">{{ previewData.orderQty }}</el-descriptions-item>
           <el-descriptions-item label="本次分配数量">{{ previewData.allocatedQty || 0 }}</el-descriptions-item>
           <el-descriptions-item label="欠货数量">
             <span :class="{ 'text-danger': getShortage(previewData) > 0 }">{{ getShortage(previewData) }}</span>
@@ -438,6 +547,7 @@ const isEditing = ref(false)
 const formRef = ref(null)
 const fileInputRef = ref(null)
 const importFileList = ref([])
+const showAdvancedColumns = ref(true)
 const currentDateTime = computed(() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -455,16 +565,20 @@ const PRESET_CUSTOMER_GROUPS = [
 
 const MIDDLE_EAST_COUNTRIES = ['沙特', '阿联酋', '阿曼', '巴林', '科威特', '卡塔尔', '黎巴嫩']
 
-const modelOptions = ['NE75', 'E9 Plus', 'L05', 'E6 Star', 'NE76', 'E7 Elite', 'MTK6500']
+const modelOptions = ['NE75', 'E9 Plus', 'L05', 'E6 Star', 'NE76', 'E7 Elite', 'MTK6500', 'HTC E7', 'E7 Lite (5G)', 'E5 Elite', 'E9', 'E9 Plus', 'E7 Life']
 const logisticsOptions = ['DHL', '海运', '空运', '顺丰拼柜']
+const productNameOptions = ['智能手机主机', '平板电脑', '智能手表', '其他']
+const memoryConfigOptions = ['4+128', '6+128', '8+256', '12+256', '4+64', '6+256']
 
 const filterPo = ref('')
 const filterPoCi = ref('')
+const filterProductName = ref('')
 const filterModel = ref('')
 const filterCustomer = ref('')
 const filterCountry = ref('')
 const filterLogistics = ref('')
 const filterStatus = ref('')
+const filterProductionStatus = ref('')
 
 const allCustomerOptions = computed(() => {
   const map = new Map()
@@ -518,11 +632,13 @@ const indeterminateState = computed(() => {
 const filteredData = computed(() => {
   return store.deliveryAllocations.filter(item => {
     if (filterPo.value && !item.poNumber.toLowerCase().includes(filterPo.value.toLowerCase())) return false
-    if (filterPoCi.value && !item.ciNumber.toLowerCase().includes(filterPoCi.value.toLowerCase())) return false
+    if (filterPoCi.value && !(item.ciNumber || '').toLowerCase().includes(filterPoCi.value.toLowerCase())) return false
+    if (filterProductName.value && item.productName !== filterProductName.value) return false
     if (filterModel.value && item.model !== filterModel.value) return false
     if (filterCustomer.value && item.customerName !== filterCustomer.value) return false
     if (filterCountry.value && item.destinationCountry !== filterCountry.value) return false
     if (filterLogistics.value && item.logistics !== filterLogistics.value) return false
+    if (filterProductionStatus.value && item.productionStatus !== filterProductionStatus.value) return false
     if (filterStatus.value) {
       const allocated = item.allocatedQty || 0
       const order = item.orderQty || 0
@@ -546,14 +662,21 @@ const rules = {
 const emptyForm = () => ({
   id: '',
   poNumber: '',
+  orderDate: '',
+  productName: '智能手机主机',
+  model: '',
+  specModel: '',
+  memoryConfig: '',
+  orderQty: 0,
+  destinationCountry: '',
+  plugSpec: '英规',
+  promisedDate: '',
+  productionStatus: '未生产',
+  warehouseStatus: '未入库',
   ciNumber: '',
   customerName: '',
   customerGroup: '',
-  destinationCountry: '',
-  model: '',
   hwConfig: '',
-  plugSpec: '英规',
-  orderQty: 0,
   allocatedQty: 0,
   warehouse: '深圳仓',
   logistics: '',
@@ -632,6 +755,25 @@ function getLogisticsTagType(logistics) {
   return map[logistics] || ''
 }
 
+function getProductionStatusType(status) {
+  const map = {
+    '未生产': 'info',
+    '生产中': 'warning',
+    '已发货': 'success',
+    '已完成': ''
+  }
+  return map[status] || 'info'
+}
+
+function getWarehouseStatusType(status) {
+  const map = {
+    '未入库': 'info',
+    '部分入库': 'warning',
+    '已入库': 'success'
+  }
+  return map[status] || 'info'
+}
+
 function generateAllocationId() {
   const now = new Date()
   const ymd = now.getFullYear().toString() +
@@ -701,11 +843,13 @@ function onCertRemarkClick() {
 function resetFilters() {
   filterPo.value = ''
   filterPoCi.value = ''
+  filterProductName.value = ''
   filterModel.value = ''
   filterCustomer.value = ''
   filterCountry.value = ''
   filterLogistics.value = ''
   filterStatus.value = ''
+  filterProductionStatus.value = ''
 }
 
 function handleAdd() {
@@ -831,9 +975,11 @@ async function handleExport() {
     const worksheet = workbook.addWorksheet(sheetName)
 
     const headers = [
-      '分配编号', 'PO编号', 'CI编号', '客户名称', '客户分组',
-      '机型', '硬件配置+颜色', '插头规格', '订单总数量', '本次分配数量',
-      '欠货数量', '发货仓库', '物流渠道', '沙特发货数量', '阿联酋发货数量',
+      '分配编号', '订单编号', '订单日期', '产品名称', '型号',
+      '规格型号', '内存配置', '数量', '国家', '插头',
+      '承诺交期', '生产完成', '入库', 'CI编号', '客户名称',
+      '客户分组', '硬件配置+颜色', '本次分配数量', '欠货数量',
+      '发货仓库', '物流渠道', '沙特发货数量', '阿联酋发货数量',
       '阿曼/巴林/科威特发货数量', '卡塔尔发货数量', '黎巴嫩发货数量',
       '清关认证备注', '是否样机', '备注'
     ]
@@ -856,13 +1002,21 @@ async function handleExport() {
       worksheet.addRow([
         row.id,
         row.poNumber,
-        row.ciNumber || '',
-        row.customerName,
-        row.customerGroup || '',
+        row.orderDate || '',
+        row.productName || '',
         row.model,
-        row.hwConfig || '',
-        row.plugSpec || '',
+        row.specModel || '',
+        row.memoryConfig || '',
         row.orderQty || 0,
+        row.destinationCountry || '',
+        row.plugSpec || '',
+        row.promisedDate || '',
+        row.productionStatus || '',
+        row.warehouseStatus || '',
+        row.ciNumber || '',
+        row.customerName || '',
+        row.customerGroup || '',
+        row.hwConfig || '',
         row.allocatedQty || 0,
         shortage,
         row.warehouse || '',
@@ -878,7 +1032,7 @@ async function handleExport() {
       ])
     })
 
-    const colWidths = [16, 14, 14, 12, 14, 10, 16, 10, 12, 14, 10, 10, 12, 12, 12, 18, 12, 12, 20, 10, 16]
+    const colWidths = [16, 14, 12, 12, 12, 16, 10, 8, 10, 8, 12, 10, 10, 14, 12, 14, 16, 12, 10, 10, 12, 12, 12, 18, 12, 12, 20, 10, 16]
     headers.forEach((_, i) => {
       const col = worksheet.getColumn(i + 1)
       col.width = colWidths[i] || 12
@@ -921,9 +1075,11 @@ async function downloadTemplate() {
     const worksheet = workbook.addWorksheet('出货分配模板')
 
     const headers = [
-      '分配编号', 'PO编号', 'CI编号', '客户名称', '客户分组',
-      '机型', '硬件配置+颜色', '插头规格', '订单总数量', '本次分配数量',
-      '欠货数量', '发货仓库', '物流渠道', '沙特发货数量', '阿联酋发货数量',
+      '分配编号', '订单编号', '订单日期', '产品名称', '型号',
+      '规格型号', '内存配置', '数量', '国家', '插头',
+      '承诺交期', '生产完成', '入库', 'CI编号', '客户名称',
+      '客户分组', '硬件配置+颜色', '本次分配数量', '欠货数量',
+      '发货仓库', '物流渠道', '沙特发货数量', '阿联酋发货数量',
       '阿曼/巴林/科威特发货数量', '卡塔尔发货数量', '黎巴嫩发货数量',
       '清关认证备注', '是否样机', '备注'
     ]
@@ -931,7 +1087,7 @@ async function downloadTemplate() {
     const titleRow = worksheet.addRow(['出货分配台账 - 导入模板'])
     titleRow.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF1a1a2e' } }
     titleRow.alignment = { horizontal: 'center' }
-    worksheet.mergeCells(`A1:U1`)
+    worksheet.mergeCells(`A1:AC1`)
 
     worksheet.addRow([])
 
@@ -942,9 +1098,12 @@ async function downloadTemplate() {
     headerRow.height = 28
 
     const exampleRow = worksheet.addRow([
-      'FP202607310001', 'SO26070001', 'CI20260731001', 'Hans', '中东沙特组',
-      'NE75', '8+256G 黑色', '英规', 100, 50, 50, '深圳仓', 'DHL',
-      30, 10, 5, 3, 2, 'SASO认证；UN38.3/MSDS', '否', '示例备注'
+      'FP202607310001', 'MEAHTC20260725', '2026/7/25', '智能手机主机', 'HTC E7',
+      'Non-camera Blue Black', '4+128', 3000, '阿联酋', '英规',
+      '9月7日', '已发货', '已入库', 'CI20260731001', 'Hans',
+      '中东沙特组', '8+256G 黑色', 100, 50,
+      '深圳仓', 'DHL', 30, 10,
+      5, 3, 2, 'SASO认证；UN38.3/MSDS', '否', '示例备注'
     ])
     exampleRow.font = { name: '微软雅黑', size: 10, color: { argb: 'FF909399' } }
 
@@ -953,8 +1112,10 @@ async function downloadTemplate() {
     worksheet.addRow(['说明：分配编号、客户分组、欠货数量、清关认证备注由系统自动计算/填充，可留空'])
     worksheet.addRow(['      是否样机：填写"是"或"否"'])
     worksheet.addRow(['      插头规格：沙特/阿联酋/阿曼/巴林/科威特/卡塔尔/黎巴嫩等地建议使用"英规"'])
+    worksheet.addRow(['      生产完成：填写"未生产"、"生产中"、"已发货"或"已完成"'])
+    worksheet.addRow(['      入库：填写"未入库"、"部分入库"或"已入库"'])
 
-    const colWidths = [16, 14, 14, 12, 14, 10, 16, 10, 12, 14, 10, 10, 12, 12, 12, 18, 12, 12, 20, 10, 16]
+    const colWidths = [16, 14, 12, 12, 12, 16, 10, 8, 10, 8, 12, 10, 10, 14, 12, 14, 16, 12, 10, 10, 12, 12, 12, 18, 12, 12, 20, 10, 16]
     headers.forEach((_, i) => {
       worksheet.getColumn(i + 1).width = colWidths[i] || 12
     })
@@ -1009,13 +1170,21 @@ async function confirmImport() {
         return {
           id: rowData.id || '',
           poNumber: rowData.poNumber || '',
+          orderDate: rowData.orderDate || '',
+          productName: rowData.productName || '智能手机主机',
+          model: rowData.model || '',
+          specModel: rowData.specModel || '',
+          memoryConfig: rowData.memoryConfig || '',
+          orderQty: Number(rowData.orderQty) || 0,
+          destinationCountry: rowData.destinationCountry || '',
+          plugSpec: rowData.plugSpec || '英规',
+          promisedDate: rowData.promisedDate || '',
+          productionStatus: rowData.productionStatus || '未生产',
+          warehouseStatus: rowData.warehouseStatus || '未入库',
           ciNumber: rowData.ciNumber || '',
           customerName: rowData.customerName || '',
           customerGroup: rowData.customerGroup || '',
-          model: rowData.model || '',
           hwConfig: rowData.hwConfig || '',
-          plugSpec: rowData.plugSpec || '英规',
-          orderQty: Number(rowData.orderQty) || 0,
           allocatedQty: Number(rowData.allocatedQty) || 0,
           warehouse: rowData.warehouse || '深圳仓',
           logistics: rowData.logistics || '',
@@ -1118,14 +1287,17 @@ function printPreview() {
       <body>
         <h1>出货分配详情</h1>
         <table>
-          <tr><th>分配编号</th><td>${row.id}</td><th>PO编号</th><td>${row.poNumber}</td></tr>
-          <tr><th>CI编号</th><td>${row.ciNumber || '-'}</td><th>客户名称</th><td>${row.customerName}</td></tr>
-          <tr><th>客户分组</th><td>${row.customerGroup || '-'}</td><th>目的国家</th><td>${row.destinationCountry || '-'}</td></tr>
-          <tr><th>机型</th><td>${row.model}</td><th>硬件配置+颜色</th><td>${row.hwConfig || '-'}</td></tr>
-          <tr><th>插头规格</th><td>${row.plugSpec || '-'}</td><th>是否样机</th><td>${row.isSample || '否'}</td></tr>
-          <tr><th>订单总数量</th><td>${row.orderQty}</td><th>本次分配数量</th><td>${row.allocatedQty || 0}</td></tr>
-          <tr><th>欠货数量</th><td>${getShortage(row)}</td><th>发货仓库</th><td>${row.warehouse}</td></tr>
-          <tr><th>物流渠道</th><td>${row.logistics}</td><th></th><td></td></tr>
+          <tr><th>分配编号</th><td>${row.id}</td><th>订单编号</th><td>${row.poNumber}</td></tr>
+          <tr><th>订单日期</th><td>${row.orderDate || '-'}</td><th>产品名称</th><td>${row.productName || '-'}</td></tr>
+          <tr><th>型号</th><td>${row.model}</td><th>规格型号</th><td>${row.specModel || '-'}</td></tr>
+          <tr><th>内存配置</th><td>${row.memoryConfig || '-'}</td><th>数量</th><td>${row.orderQty}</td></tr>
+          <tr><th>国家</th><td>${row.destinationCountry || '-'}</td><th>插头</th><td>${row.plugSpec || '-'}</td></tr>
+          <tr><th>承诺交期</th><td>${row.promisedDate || '-'}</td><th>生产完成</th><td>${row.productionStatus || '-'}</td></tr>
+          <tr><th>入库</th><td>${row.warehouseStatus || '-'}</td><th>CI编号</th><td>${row.ciNumber || '-'}</td></tr>
+          <tr><th>客户名称</th><td>${row.customerName || '-'}</td><th>客户分组</th><td>${row.customerGroup || '-'}</td></tr>
+          <tr><th>硬件配置+颜色</th><td>${row.hwConfig || '-'}</td><th>是否样机</th><td>${row.isSample || '否'}</td></tr>
+          <tr><th>本次分配数量</th><td>${row.allocatedQty || 0}</td><th>欠货数量</th><td>${getShortage(row)}</td></tr>
+          <tr><th>发货仓库</th><td>${row.warehouse}</td><th>物流渠道</th><td>${row.logistics}</td></tr>
         </table>
         <div class="section-title">各目的国发货分配</div>
         <table>
