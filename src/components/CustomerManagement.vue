@@ -1386,23 +1386,25 @@ function getRecordSettlementStatus(row) {
 
 // 计算付款比例（自动计算：已付款金额/订单金额）
 function parsePaymentRatio(row) {
-  // 优先使用自动计算的比例
+  // 1. 优先使用订单聚合的自动计算比例（为0时继续回退，不直接返回0）
   const orderNo = row.orderNo
   if (orderNo && orderSettlementMap.value[orderNo]) {
     const settlement = orderSettlementMap.value[orderNo]
     if (settlement.orderAmount > 0) {
       const ratio = Math.round((settlement.paidAmount / settlement.orderAmount) * 100)
-      return Math.min(100, Math.max(0, ratio))
+      if (ratio > 0) return Math.min(100, Math.max(0, ratio))
     }
   }
-  
-  // 回退：如果单条记录有付款金额/订单金额，使用单条计算
-  if (row.orderAmount > 0) {
-    const paidAmount = row.arrivalStatus === '已到账' ? (Number(row.paymentAmount) || 0) : 0
-    return Math.min(100, Math.max(0, Math.round((paidAmount / row.orderAmount) * 100)))
+
+  // 2. 单条记录已到账且有付款金额时，按付款金额/订单金额计算
+  if (row.arrivalStatus === '已到账' && row.orderAmount > 0) {
+    const paidAmount = Number(row.paymentAmount) || 0
+    if (paidAmount > 0) {
+      return Math.min(100, Math.max(0, Math.round((paidAmount / row.orderAmount) * 100)))
+    }
   }
-  
-  // 最后回退：使用手动输入的 paymentRatio
+
+  // 3. 回退到导入的付款比例（Excel 中的 60%/100%/20%）
   const ratio = row.paymentRatio
   if (!ratio && ratio !== 0) return 0
   if (typeof ratio === 'number') {
@@ -2435,13 +2437,24 @@ async function handlePaymentImport(event) {
         currency = 'USD' // 默认货币为 USD
       }
 
+      // 智能推断到账状态：Excel 无到账状态列时，
+      // 有付款日期且付款金额>0，或付款类型为"全款"且有付款金额 → 视为已到账
+      if (!payment.arrivalStatus) {
+        const hasPaid = Number(payment.paymentAmount) > 0
+        if ((payment.paymentDate && hasPaid) || (payment.paymentType === '全款' && hasPaid)) {
+          payment.arrivalStatus = '已到账'
+        } else {
+          payment.arrivalStatus = '未到账'
+        }
+      }
+
       const idx = store.customerPayments.findIndex(p => p.id === id)
       let rec
       if (idx > -1) {
-        rec = { 
-          ...store.customerPayments[idx], 
-          ...payment, 
-          id, 
+        rec = {
+          ...store.customerPayments[idx],
+          ...payment,
+          id,
           customerId,
           currency // 保留识别到的货币
         }
