@@ -262,14 +262,14 @@
             <el-tag :type="row.paymentType === '尾款' ? 'warning' : ''" size="small">{{ row.paymentType }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="paymentRatio" label="付款比例" width="90">
+        <el-table-column prop="paymentRatio" label="付款比例" width="100">
           <template #default="{ row }">
             <el-progress
-              :percentage="parsePaymentRatio(row.paymentRatio)"
-              :stroke-width="14"
-              :color="getProgressColor(parsePaymentRatio(row.paymentRatio))"
+              :percentage="parsePaymentRatio(row)"
+              :stroke-width="16"
+              :color="getProgressColor(parsePaymentRatio(row))"
               :text-inside="true"
-              style="width: 70px;"
+              style="width: 80px;"
             />
           </template>
         </el-table-column>
@@ -630,10 +630,17 @@
           <el-date-picker v-model="paymentForm.orderDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="产品名称">
-          <el-input v-model="paymentForm.productName" />
+          <el-select v-model="paymentForm.productName" placeholder="选择产品" filterable allow-create default-first-option style="width: 100%;" @change="onProductNameChange">
+            <el-option v-for="p in productNameOptions" :key="p" :label="p" :value="p" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="型号">
+          <el-select v-model="paymentForm.model" placeholder="选择型号" filterable allow-create default-first-option style="width: 100%;" @change="onModelChange">
+            <el-option v-for="m in filteredModelOptions" :key="m" :label="m" :value="m" />
+          </el-select>
         </el-form-item>
         <el-form-item label="规格型号">
-          <el-input v-model="paymentForm.specModel" />
+          <el-input v-model="paymentForm.specModel" placeholder="选择型号后自动填充" readonly />
         </el-form-item>
         <el-form-item label="颜色">
           <el-input v-model="paymentForm.color" placeholder="如 Black / Blue Black" />
@@ -641,17 +648,15 @@
         <el-form-item label="内存配置">
           <el-input v-model="paymentForm.memoryConfig" placeholder="如 4+128 / 6+256" />
         </el-form-item>
-        <el-form-item label="型号">
-          <el-input v-model="paymentForm.model" placeholder="如 HTC E7" />
-        </el-form-item>
         <el-form-item label="数量">
-          <el-input-number v-model="paymentForm.quantity" :min="0" style="width: 100%" />
+          <el-input-number v-model="paymentForm.quantity" :min="0" style="width: 100%" @change="calcOrderAmount" />
         </el-form-item>
         <el-form-item label="单价">
-          <el-input-number v-model="paymentForm.unitPrice" :min="0" :precision="2" style="width: 100%" />
+          <el-input-number v-model="paymentForm.unitPrice" :min="0" :precision="2" style="width: 100%" @change="calcOrderAmount" />
         </el-form-item>
         <el-form-item label="订单金额">
           <el-input-number v-model="paymentForm.orderAmount" :min="0" :precision="2" style="width: 100%" />
+          <div class="form-tip">自动计算：单价 × 数量</div>
         </el-form-item>
         <el-form-item label="交货日期">
           <el-date-picker v-model="paymentForm.deliveryDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
@@ -1137,6 +1142,92 @@ const modelOptions = computed(() => {
   return [...new Set(models)]
 })
 
+// 产品名称选项
+const productNameOptions = computed(() => {
+  const productNames = [
+    '智能手机主机',
+    '平板电脑',
+    '智能手表',
+    '其他'
+  ]
+  return productNames
+})
+
+// 根据产品名称过滤的型号选项
+const filteredModelOptions = computed(() => {
+  const productName = paymentForm.productName
+  if (!productName) {
+    return modelOptions.value
+  }
+  // 返回所有型号（简化处理，用户可以自由选择）
+  return modelOptions.value
+})
+
+// 产品规格映射（型号 -> 规格信息）
+const modelSpecMap = computed(() => {
+  const map = {}
+  store.productModels.forEach(m => {
+    if (m.name) {
+      map[m.name] = {
+        spec: `${m.chip || ''} / ${m.screen || ''}`,
+        chip: m.chip || '',
+        screen: m.screen || '',
+        certifications: m.certifications || []
+      }
+    }
+  })
+  return map
+})
+
+// 产品名称改变时
+function onProductNameChange(value) {
+  // 清除相关字段
+  paymentForm.model = ''
+  paymentForm.specModel = ''
+  paymentForm.color = ''
+  paymentForm.memoryConfig = ''
+  
+  // 如果选择了产品，可以自动填充一些默认型号
+  const defaultModels = {
+    '智能手机主机': ['E7 Elite', 'NE75', 'NE76'],
+    '平板电脑': ['MTK6500'],
+    '智能手表': [],
+    '其他': modelOptions.value
+  }
+  
+  const models = defaultModels[value] || modelOptions.value
+  if (models.length === 1) {
+    paymentForm.model = models[0]
+    onModelChange(models[0])
+  }
+}
+
+// 型号改变时
+function onModelChange(model) {
+  if (!model) {
+    paymentForm.specModel = ''
+    return
+  }
+  
+  // 自动填充规格型号
+  const specInfo = modelSpecMap.value[model]
+  if (specInfo) {
+    paymentForm.specModel = `${specInfo.chip} / ${specInfo.screen}`
+  } else {
+    paymentForm.specModel = model
+  }
+  
+  // 如果是首次选择，可能需要自动计算订单金额
+  calcOrderAmount()
+}
+
+// 计算订单金额
+function calcOrderAmount() {
+  if (paymentForm.unitPrice > 0 && paymentForm.quantity > 0) {
+    paymentForm.orderAmount = Math.round(paymentForm.unitPrice * paymentForm.quantity * 100) / 100
+  }
+}
+
 const logisticsOptions = [
   '顺丰速运',
   '圆通速递',
@@ -1269,8 +1360,26 @@ function getRecordSettlementStatus(row) {
   return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
 }
 
-// 解析付款比例（支持字符串和数字格式）
-function parsePaymentRatio(ratio) {
+// 计算付款比例（自动计算：已付款金额/订单金额）
+function parsePaymentRatio(row) {
+  // 优先使用自动计算的比例
+  const orderNo = row.orderNo
+  if (orderNo && orderSettlementMap.value[orderNo]) {
+    const settlement = orderSettlementMap.value[orderNo]
+    if (settlement.orderAmount > 0) {
+      const ratio = Math.round((settlement.paidAmount / settlement.orderAmount) * 100)
+      return Math.min(100, Math.max(0, ratio))
+    }
+  }
+  
+  // 回退：如果单条记录有付款金额/订单金额，使用单条计算
+  if (row.orderAmount > 0) {
+    const paidAmount = row.arrivalStatus === '已到账' ? (Number(row.paymentAmount) || 0) : 0
+    return Math.min(100, Math.max(0, Math.round((paidAmount / row.orderAmount) * 100)))
+  }
+  
+  // 最后回退：使用手动输入的 paymentRatio
+  const ratio = row.paymentRatio
   if (!ratio && ratio !== 0) return 0
   if (typeof ratio === 'number') {
     return Math.min(100, Math.max(0, ratio))
@@ -2904,6 +3013,13 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 .reminder-date {
   color: #e6a23c;
   font-weight: 600;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 :deep(.payment-remaining-row) {
