@@ -808,7 +808,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId, saveToLocalStorage, isValidPaymentId } from '../store.js'
 import { exportToExcel } from '../utils/excelExport.js'
-import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
+import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync, getPaymentDateFields, getPaymentAmountFields } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase, deleteFromSupabase } from '../supabase.js'
 import { Document, ZoomIn, Plus } from '@element-plus/icons-vue'
@@ -2068,12 +2068,19 @@ async function handlePaymentImport(event) {
   const result = await importFromExcel(file, {
     fieldMapping: fieldMappingPresets.customerPayments,
     headerRow: 2,
-    startRow: 3
+    startRow: 3,
+    autoDetectHeader: true,
+    dateFields: getPaymentDateFields(),
+    amountFields: getPaymentAmountFields()
   })
 
   if (!result.success) {
     ElMessage.error(result.message || '导入失败')
     return
+  }
+
+  if (result.detectedCurrency) {
+    ElMessage.info(`检测到货币类型：${result.detectedCurrency}，将自动设置货币为 ${result.detectedCurrency}`)
   }
 
   ElMessageBox.confirm(
@@ -2098,27 +2105,46 @@ async function handlePaymentImport(event) {
         id = generateId('cp')
       }
 
+      // 货币识别：优先使用检测到的货币，默认为 USD
+      let currency = payment.currency || ''
+      if (!currency && result.detectedCurrency) {
+        currency = result.detectedCurrency
+      }
+      if (!currency) {
+        currency = 'USD' // 默认货币为 USD
+      }
+
       const idx = store.customerPayments.findIndex(p => p.id === id)
       let rec
       if (idx > -1) {
-        rec = { ...store.customerPayments[idx], ...payment, id, customerId }
+        rec = { 
+          ...store.customerPayments[idx], 
+          ...payment, 
+          id, 
+          customerId,
+          currency // 保留识别到的货币
+        }
         store.customerPayments[idx] = rec
       } else {
         rec = {
           id,
           customerId,
           customerName: payment.customerName || '',
-          currency: payment.currency || 'CNY',
+          currency,
           orderNo: payment.orderNo || '',
           orderDate: payment.orderDate || '',
           productName: payment.productName || '',
           specModel: payment.specModel || '',
+          color: payment.color || '',
+          model: payment.model || '',
+          memoryConfig: payment.memoryConfig || '',
           quantity: Number(payment.quantity) || 0,
           unitPrice: Number(payment.unitPrice) || 0,
           orderAmount: Number(payment.orderAmount) || 0,
           deliveryDate: payment.deliveryDate || '',
           paymentBatch: payment.paymentBatch || '第1笔',
           paymentType: payment.paymentType || '定金',
+          paymentRatio: payment.paymentRatio || '',
           paymentDate: payment.paymentDate || '',
           paymentAmount: Number(payment.paymentAmount) || 0,
           paymentMethod: payment.paymentMethod || '银行转账',

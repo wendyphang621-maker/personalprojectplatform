@@ -405,7 +405,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import ExcelJS from 'exceljs'
 import { store } from '../store.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { importFromExcel, fieldMappingPresets } from '../utils/excelImport.js'
+import { importFromExcel, fieldMappingPresets, getScheduleDateFields } from '../utils/excelImport.js'
 
 const loading = ref(false)
 const selection = ref([])
@@ -932,12 +932,18 @@ async function handleImport(event) {
   const result = await importFromExcel(file, {
     fieldMapping: fieldMappingPresets.deliverySchedules,
     headerRow: 2,
-    startRow: 3
+    startRow: 3,
+    autoDetectHeader: true,
+    dateFields: getScheduleDateFields()
   })
 
   if (!result.success) {
     ElMessage.error(result.message || '导入失败')
     return
+  }
+
+  if (result.unmatchedMappingFields && result.unmatchedMappingFields.length > 0) {
+    console.warn('未匹配字段:', result.unmatchedMappingFields)
   }
 
   ElMessageBox.confirm(
@@ -946,23 +952,49 @@ async function handleImport(event) {
     { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
   ).then(() => {
     result.data.forEach(item => {
-      const idx = store.deliverySchedules.findIndex(d => d.id === item.id)
-      if (idx > -1) {
-        store.deliverySchedules[idx] = { ...store.deliverySchedules[idx], ...item }
+      const existingIdx = store.deliverySchedules.findIndex(d => 
+        d.orderId === item.orderId && d.customerName === item.customerName && d.model === item.model
+      )
+      
+      const importData = {
+        ...item,
+        id: item.id || generateId(),
+        orderId: item.orderId || '',
+        poNumber: item.orderId || item.poNumber || '',
+        customerName: item.customerName || '',
+        customerGroup: item.customerGroup || '',
+        destinationCountry: item.destinationCountry || '',
+        model: item.model || '',
+        configColor: item.configColor || '',
+        memoryConfig: item.memoryConfig || '',
+        plugSpec: item.plugSpec || '',
+        orderDate: item.orderDate || '',
+        promiseDate: item.promiseDate || item.requiredDate || '',
+        smtDate: item.smtDate || '',
+        warehouseDate: item.warehouseDate || '',
+        actualShipDate: item.actualShipDate || item.actualDate || '',
+        latestEta: item.latestEta || item.estimatedDate || '',
+        logistics: item.logistics || '',
+        trackingNos: item.trackingNos || '',
+        etaRemark: item.etaRemark || '',
+        delayReason: item.delayReason || '',
+        saudiQty: Number(item.saudiQty) || 0,
+        uaeQty: Number(item.uaeQty) || 0,
+        omanQty: Number(item.omanQty) || 0,
+        qatarQty: Number(item.qatarQty) || 0,
+        lebanonQty: Number(item.lebanonQty) || 0,
+        clearanceDocs: item.clearanceDocs || '',
+        status: item.status || '待生产',
+        remark: item.remark || ''
+      }
+
+      if (existingIdx > -1) {
+        store.deliverySchedules[existingIdx] = { 
+          ...store.deliverySchedules[existingIdx], 
+          ...importData 
+        }
       } else {
-        store.deliverySchedules.push({
-          id: item.id || `ds${Date.now()}`,
-          orderId: item.orderId || '',
-          customerName: item.customerName || '',
-          model: item.model || '',
-          orderQty: item.orderQty || 0,
-          shippedQty: item.shippedQty || 0,
-          requiredDate: item.requiredDate || '',
-          estimatedDate: item.estimatedDate || '',
-          actualDate: item.actualDate || '',
-          status: item.status || '进行中',
-          remark: item.remark || ''
-        })
+        store.deliverySchedules.push(importData)
       }
     })
     ElMessage.success(`成功导入 ${result.data.length} 条交期管控数据`)
