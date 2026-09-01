@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 const AUTH_KEY = 'project_workbench_auth'
 const USER_PREFIX = 'project_workbench_user_'
-const DATA_VERSION = 'v15'
+const DATA_VERSION = 'v16'
 
 const defaultUser = {
   name: 'Caroline',
@@ -198,10 +198,19 @@ const defaultData = {
     { id: 'fu10', customerId: 'c3', customerName: 'Jason', followupDate: '2026-07-15', content: '确认下季度订单计划', result: 'positive', contactMethod: '视频会议', poNumber: '', nextFollowup: '2026-08-01', operator: '王聪', attachments: [] }
   ],
   
+  receivingEntities: [
+    { id: 'RE-001', fullName: '深圳科技有限公司', shortName: '深圳科技', remark: '默认收款主体', isActive: true, createdAt: '2026-01-01' }
+  ],
+
+  paymentReceipts: [
+    { id: 'PR-0001', orderNo: 'PO-2026-001', receivingEntityId: 'RE-001', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-16', paymentAmount: 8400, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金', createdAt: '2026-07-16' },
+    { id: 'PR-0002', orderNo: 'PO-2026-001', receivingEntityId: 'RE-001', paymentBatch: '第3笔', paymentType: '尾款', paymentDate: '2026-08-02', paymentAmount: 16800, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '60%尾款待发货', createdAt: '2026-08-02' },
+    { id: 'PR-0003', orderNo: 'PO-2026-002', receivingEntityId: 'RE-001', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-29', paymentAmount: 9000, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金', createdAt: '2026-07-29' }
+  ],
+
   customerPayments: [
-    { id: 'cp1', customerId: 'c1', customerName: 'Hans', orderNo: 'PO-2026-001', orderDate: '2026-07-15', productName: '智能手机主机', specModel: 'MTK-6500-V2', quantity: 1000, unitPrice: 28, orderAmount: 28000, deliveryDate: '2026-08-15', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-16', paymentAmount: 8400, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金' },
-    { id: 'cp2', customerId: 'c2', customerName: 'Ethan', orderNo: 'PO-2026-002', orderDate: '2026-07-28', productName: '显示屏模组', specModel: 'HD+-6.91', quantity: 500, unitPrice: 60, orderAmount: 30000, deliveryDate: '2026-08-30', paymentBatch: '第1笔', paymentType: '定金', paymentDate: '2026-07-29', paymentAmount: 9000, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '30%定金' },
-    { id: 'cp3', customerId: 'c1', customerName: 'Hans', orderNo: 'PO-2026-001', orderDate: '2026-07-15', productName: '智能手机主机', specModel: 'MTK-6500-V2', quantity: 1000, unitPrice: 28, orderAmount: 28000, deliveryDate: '2026-08-15', paymentBatch: '第3笔', paymentType: '尾款', paymentDate: '2026-08-02', paymentAmount: 16800, paymentMethod: '银行转账', arrivalStatus: '已到账', remark: '60%尾款待发货' }
+    { id: 'CPAY-0001', customerId: 'c1', customerName: 'Hans', currency: 'USD', orderNo: 'PO-2026-001', orderDate: '2026-07-15', productName: '智能手机主机', specModel: 'MTK-6500-V2', color: '', memoryConfig: '', model: '', quantity: 1000, unitPrice: 28, orderAmount: 28000, deliveryDate: '2026-08-15', receivingEntityId: 'RE-001', remark: '' },
+    { id: 'CPAY-0002', customerId: 'c2', customerName: 'Ethan', currency: 'USD', orderNo: 'PO-2026-002', orderDate: '2026-07-28', productName: '显示屏模组', specModel: 'HD+-6.91', color: '', memoryConfig: '', model: '', quantity: 500, unitPrice: 60, orderAmount: 30000, deliveryDate: '2026-08-30', receivingEntityId: 'RE-001', remark: '' }
   ],
   
   developmentLetters: [
@@ -403,7 +412,7 @@ function loadUserData(userId) {
         }
       }
       
-      return migratePaymentIds(migrateSampleDeliveries(result))
+      return migratePaymentReceipts(migratePaymentIds(migrateSampleDeliveries(result)))
     }
     return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
   } catch {
@@ -717,6 +726,95 @@ function migratePaymentIds(data) {
   return data
 }
 
+// 迁移：将 customerPayments 中的付款字段拆分到 paymentReceipts 子表
+function migratePaymentReceipts(data) {
+  if (!data.customerPayments || !Array.isArray(data.customerPayments)) {
+    data.customerPayments = []
+  }
+  if (!data.paymentReceipts || !Array.isArray(data.paymentReceipts)) {
+    data.paymentReceipts = []
+  }
+  if (!data.receivingEntities || !Array.isArray(data.receivingEntities)) {
+    data.receivingEntities = [
+      { id: 'RE-001', fullName: '深圳科技有限公司', shortName: '深圳科技', remark: '默认收款主体', isActive: true, createdAt: '2026-01-01' }
+    ]
+  }
+
+  // 已迁移标志：customerPayments 中不再有 paymentAmount 字段
+  const needsMigration = data.customerPayments.some(p => p.paymentAmount !== undefined || p.paymentBatch !== undefined)
+  if (!needsMigration) return data
+
+  console.log('[迁移] 开始拆分 customerPayments → productLines + paymentReceipts')
+
+  // 默认收款主体
+  const defaultEntityId = data.receivingEntities[0]?.id || 'RE-001'
+
+  // 收集所有付款记录
+  const receipts = [...(data.paymentReceipts || [])]
+  let prCounter = receipts.length
+  const validPrIds = new Set(receipts.map(r => r.id).filter(id => /^PR-\d{4}$/.test(id)))
+
+  // 按 orderNo + productName + specModel 去重产品明细
+  const productLineMap = new Map()
+
+  data.customerPayments.forEach(p => {
+    const key = `${p.orderNo || ''}|${p.productName || ''}|${p.specModel || ''}`
+    if (!productLineMap.has(key)) {
+      // 创建产品明细行（只保留产品字段）
+      productLineMap.set(key, {
+        id: p.id,
+        customerId: p.customerId || '',
+        customerName: p.customerName || '',
+        currency: p.currency || 'USD',
+        orderNo: p.orderNo || '',
+        orderDate: p.orderDate || '',
+        productName: p.productName || '',
+        specModel: p.specModel || '',
+        color: p.color || '',
+        memoryConfig: p.memoryConfig || '',
+        model: p.model || '',
+        quantity: Number(p.quantity) || 0,
+        unitPrice: Number(p.unitPrice) || 0,
+        orderAmount: Number(p.orderAmount) || 0,
+        deliveryDate: p.deliveryDate || '',
+        receivingEntityId: p.receivingEntityId || defaultEntityId,
+        remark: p.remark || ''
+      })
+    }
+
+    // 如果该行有付款信息，提取到 paymentReceipts
+    const hasPayment = (p.paymentAmount && Number(p.paymentAmount) > 0) || p.paymentType
+    if (hasPayment) {
+      prCounter++
+      let prId = `PR-${String(prCounter).padStart(4, '0')}`
+      while (validPrIds.has(prId)) {
+        prCounter++
+        prId = `PR-${String(prCounter).padStart(4, '0')}`
+      }
+      validPrIds.add(prId)
+      receipts.push({
+        id: prId,
+        orderNo: p.orderNo || '',
+        receivingEntityId: p.receivingEntityId || defaultEntityId,
+        paymentBatch: p.paymentBatch || '',
+        paymentType: p.paymentType || '',
+        paymentDate: p.paymentDate || '',
+        paymentAmount: Number(p.paymentAmount) || 0,
+        paymentMethod: p.paymentMethod || '银行转账',
+        arrivalStatus: p.arrivalStatus || '未到账',
+        remark: p.remark || '',
+        createdAt: p.paymentDate || new Date().toISOString().split('T')[0]
+      })
+    }
+  })
+
+  data.customerPayments = Array.from(productLineMap.values())
+  data.paymentReceipts = receipts
+  console.log(`[迁移] 拆分完成: ${data.customerPayments.length} 条产品明细, ${data.paymentReceipts.length} 条收款流水`)
+
+  return data
+}
+
 function saveUserData(userId, data) {
   try {
     localStorage.setItem(USER_PREFIX + userId, JSON.stringify(data))
@@ -740,6 +838,8 @@ export function saveToLocalStorage() {
       followups: store.followups,
       customerGroups: store.customerGroups,
       customerPayments: store.customerPayments,
+      receivingEntities: store.receivingEntities,
+      paymentReceipts: store.paymentReceipts,
       tasks: store.tasks,
       dailyTodos: store.dailyTodos,
       orderProducts: store.orderProducts,
@@ -771,7 +871,7 @@ export function saveToLocalStorage() {
 }
 
 export const authStore = reactive(loadAuth())
-export const store = reactive(migrateSampleDeliveries({ user: defaultUser, ...defaultData }))
+export const store = reactive(migratePaymentReceipts(migrateSampleDeliveries({ user: defaultUser, ...defaultData })))
 
 let currentUserId = null
 
@@ -957,7 +1057,9 @@ const SHORT_ID_FORMATS = {
   cmc: { prefix: 'CMC', pad: 3, storeKey: 'certMatrixCells' },
   cmt: { prefix: 'CMT', pad: 3, storeKey: 'certMatrixTemplates' },
   fu: { prefix: 'CFU', pad: 4, storeKey: 'customerFollowUps' },
-  followup: { prefix: 'CFU', pad: 4, storeKey: 'customerFollowUps' }
+  followup: { prefix: 'CFU', pad: 4, storeKey: 'customerFollowUps' },
+  re: { prefix: 'RE', pad: 3, storeKey: 'receivingEntities' },
+  pr: { prefix: 'PR', pad: 4, storeKey: 'paymentReceipts' }
 }
 
 function getNextCounter(fmtPrefix, storeKey) {

@@ -233,7 +233,46 @@
           </div>
         </div>
       </el-tab-pane>
-      
+
+      <el-tab-pane label="收款主体" name="receiving_entity" v-if="store.user.role === 'admin'">
+        <div class="tab-content">
+          <div class="setting-section">
+            <div class="section-header">
+              <h3>收款主体管理</h3>
+              <el-button type="primary" @click="handleAddEntity">新增收款主体</el-button>
+            </div>
+            <el-alert
+              title="停用主体不会删除历史订单数据，仅在新订单下拉中隐藏"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 12px;"
+            />
+            <el-table :data="entityList" border style="width: 100%">
+              <el-table-column prop="fullName" label="公司全称" min-width="200" />
+              <el-table-column prop="shortName" label="简称" width="150" />
+              <el-table-column label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.isActive ? 'success' : 'info'">
+                    {{ row.isActive ? '启用' : '停用' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="150" />
+              <el-table-column prop="createdAt" label="创建时间" width="120" />
+              <el-table-column label="操作" width="200">
+                <template #default="{ row }">
+                  <el-button size="small" @click="handleEditEntity(row)">编辑</el-button>
+                  <el-button size="small" :type="row.isActive ? 'warning' : 'success'" @click="handleToggleEntity(row)">
+                    {{ row.isActive ? '停用' : '启用' }}
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane label="预警配置" name="alert">
         <div class="tab-content">
           <div class="setting-section">
@@ -787,12 +826,35 @@
         <el-button @click="showConflictDialog = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 收款主体编辑对话框 -->
+    <el-dialog
+      v-model="showEntityDialog"
+      :title="isEditingEntity ? '编辑收款主体' : '新增收款主体'"
+      width="500px"
+    >
+      <el-form :model="entityForm" label-width="80px">
+        <el-form-item label="全称" required>
+          <el-input v-model="entityForm.fullName" placeholder="公司全称" />
+        </el-form-item>
+        <el-form-item label="简称">
+          <el-input v-model="entityForm.shortName" placeholder="公司简称" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="entityForm.remark" type="textarea" :rows="3" placeholder="备注信息" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEntityDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveEntity">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase, saveAuth, saveToLocalStorage } from '../store.js'
+import { store, authStore, register, deleteAuthUser, updateAuthUser, changePassword, resetAllData, syncAllFromSupabase, saveAuth, saveToLocalStorage, generateId } from '../store.js'
 import { testSupabaseConnection, saveSupabaseConfig, getSupabaseConfig, clearSupabaseConfig, createSupabaseBucket, syncToSupabase, fetchFromSupabase, setForceProduction, getForceProduction, setLocalMode, getLocalMode, getLocalModeStatus, exportConfigFile, importConfigFile, clearSavedConfig, updatePassword, createAccount, listAccounts, updateAccount, deleteAccount, resetOtherUserPassword, logRequestDestination } from '../supabase.js'
 import { tabConfigs, updateTabTitle, resetTabTitle, resetAllTabTitles, getAllTabConfigs, DEFAULT_CONFIGS } from '../tabConfig.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -831,6 +893,66 @@ const userSearchKeyword = ref('')
 const passwordFormRef = ref(null)
 const userFormRef = ref(null)
 const accountList = ref([])
+
+// 收款主体管理
+const showEntityDialog = ref(false)
+const isEditingEntity = ref(false)
+const editingEntityId = ref('')
+const entityForm = reactive({ fullName: '', shortName: '', remark: '' })
+
+const entityList = computed(() => store.receivingEntities || [])
+
+function handleAddEntity() {
+  isEditingEntity.value = false
+  editingEntityId.value = ''
+  entityForm.fullName = ''
+  entityForm.shortName = ''
+  entityForm.remark = ''
+  showEntityDialog.value = true
+}
+
+function handleEditEntity(row) {
+  isEditingEntity.value = true
+  editingEntityId.value = row.id
+  entityForm.fullName = row.fullName
+  entityForm.shortName = row.shortName
+  entityForm.remark = row.remark
+  showEntityDialog.value = true
+}
+
+function saveEntity() {
+  if (!entityForm.fullName.trim()) {
+    ElMessage.error('请填写公司全称')
+    return
+  }
+  if (isEditingEntity.value) {
+    const entity = store.receivingEntities.find(e => e.id === editingEntityId.value)
+    if (entity) {
+      entity.fullName = entityForm.fullName.trim()
+      entity.shortName = entityForm.shortName.trim()
+      entity.remark = entityForm.remark.trim()
+    }
+    ElMessage.success('更新成功')
+  } else {
+    store.receivingEntities.push({
+      id: generateId('re'),
+      fullName: entityForm.fullName.trim(),
+      shortName: entityForm.shortName.trim(),
+      remark: entityForm.remark.trim(),
+      isActive: true,
+      createdAt: new Date().toISOString().split('T')[0]
+    })
+    ElMessage.success('新增成功')
+  }
+  saveToLocalStorage()
+  showEntityDialog.value = false
+}
+
+function handleToggleEntity(row) {
+  row.isActive = !row.isActive
+  saveToLocalStorage()
+  ElMessage.success(row.isActive ? '已启用' : '已停用')
+}
 
 const passwordErrors = reactive({
   minLength: '',

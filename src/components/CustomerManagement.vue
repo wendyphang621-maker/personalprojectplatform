@@ -186,11 +186,10 @@
         <el-select v-model="paymentFilterCustomer" placeholder="选择客户" clearable style="width: 180px">
           <el-option v-for="c in store.customers" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>
-        <el-select v-model="paymentFilterStatus" placeholder="到账状态" clearable style="width: 120px">
-          <el-option label="已到账" value="已到账" />
-          <el-option label="未到账" value="未到账" />
+        <el-select v-model="filterReceivingEntity" placeholder="收款主体" clearable style="width: 180px">
+          <el-option v-for="e in activeReceivingEntities" :key="e.id" :label="e.fullName" :value="e.id" />
         </el-select>
-        <el-button type="primary" @click="handleAddPayment">新增付款记录</el-button>
+        <el-button type="primary" @click="handleAddPayment">新增产品明细</el-button>
         <el-button @click="previewPayments">预览</el-button>
         <el-button @click="exportPayments">导出Excel</el-button>
         <el-button type="warning" @click="triggerPaymentImport">批量导入</el-button>
@@ -252,6 +251,55 @@
         </span>
       </div>
       <el-table :data="filteredPayments" border stripe :row-class-name="paymentRowClassName" @selection-change="handlePaymentSelectionChange">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="receipt-sub-table">
+              <div class="receipt-sub-header">
+                <span class="receipt-title">收款流水（{{ row.orderNo }}）</span>
+                <el-button size="small" type="primary" @click="handleAddReceipt(row)">新增收款</el-button>
+              </div>
+              <el-table :data="getReceiptsByOrder(row.orderNo)" border size="small" style="width: 100%">
+                <el-table-column prop="paymentBatch" label="付款批次" width="90" />
+                <el-table-column prop="paymentType" label="付款类型" width="90">
+                  <template #default="{ row: r }">
+                    <el-tag :type="r.paymentType === '尾款' ? 'warning' : ''" size="small">{{ r.paymentType }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="paymentDate" label="付款日期" width="110" />
+                <el-table-column prop="paymentAmount" label="付款金额" width="120">
+                  <template #default="{ row: r }">{{ getCurrencySymbol(row.currency) }}{{ Number(r.paymentAmount)?.toLocaleString() }}</template>
+                </el-table-column>
+                <el-table-column prop="paymentMethod" label="付款方式" width="100" />
+                <el-table-column label="到账状态" width="100">
+                  <template #default="{ row: r }">
+                    <el-tag :type="r.arrivalStatus === '已到账' ? 'success' : 'info'" size="small">{{ r.arrivalStatus }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+                <el-table-column label="操作" width="130">
+                  <template #default="{ row: r }">
+                    <el-button size="small" @click="handleEditReceipt(r, row)">编辑</el-button>
+                    <el-button size="small" type="danger" @click="handleDeleteReceipt(r)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="receipt-summary">
+                <span>订单总金额：<b>{{ getCurrencySymbol(row.currency) }}{{ Number(row.orderAmount)?.toLocaleString() }}</b></span>
+                <span>已收款：<b class="text-green">{{ getCurrencySymbol(row.currency) }}{{ getOrderPaidAmount(row.orderNo).toLocaleString() }}</b></span>
+                <span>待收余额：<b class="text-red">{{ getCurrencySymbol(row.currency) }}{{ Math.max(0, Number(row.orderAmount) - getOrderPaidAmount(row.orderNo)).toLocaleString() }}</b></span>
+                <span>付款比例：
+                  <el-progress
+                    :percentage="getOrderPaymentRatio(row.orderNo, row.orderAmount)"
+                    :stroke-width="16"
+                    :color="getProgressColor(getOrderPaymentRatio(row.orderNo, row.orderAmount))"
+                    :text-inside="true"
+                    style="width: 150px; display: inline-block; vertical-align: middle;"
+                  />
+                </span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column type="selection" width="50" />
         <el-table-column prop="id" label="记录ID" width="100" />
         <el-table-column prop="customerName" label="客户姓名" width="100" />
@@ -260,6 +308,8 @@
         <el-table-column prop="productName" label="产品名称" width="110" />
         <el-table-column prop="specModel" label="规格型号" width="100" />
         <el-table-column prop="color" label="颜色" width="90" />
+        <el-table-column prop="memoryConfig" label="内存配置" width="90" />
+        <el-table-column prop="model" label="型号" width="90" />
         <el-table-column prop="currency" label="币种" width="70">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}</template>
         </el-table-column>
@@ -269,6 +319,9 @@
         </el-table-column>
         <el-table-column prop="orderAmount" label="订单金额" width="100">
           <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.orderAmount?.toLocaleString() }}</template>
+        </el-table-column>
+        <el-table-column label="收款主体" width="150">
+          <template #default="{ row }">{{ getEntityName(row.receivingEntityId) }}</template>
         </el-table-column>
         <el-table-column label="交货日期" width="110">
           <template #default="{ row }">
@@ -280,29 +333,7 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column prop="paymentBatch" label="付款批次" width="80" />
-        <el-table-column prop="paymentType" label="付款类型" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.paymentType === '尾款' ? 'warning' : ''" size="small">{{ row.paymentType }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="paymentRatio" label="付款比例" width="100">
-          <template #default="{ row }">
-            <el-progress
-              :percentage="parsePaymentRatio(row)"
-              :stroke-width="16"
-              :color="getProgressColor(parsePaymentRatio(row))"
-              :text-inside="true"
-              style="width: 80px;"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="paymentDate" label="付款日期" width="100" />
-        <el-table-column prop="paymentAmount" label="付款金额" width="110">
-          <template #default="{ row }">{{ getCurrencySymbol(row.currency) }}{{ row.paymentAmount?.toLocaleString() }}</template>
-        </el-table-column>
-        <el-table-column prop="paymentMethod" label="付款方式" width="100" />
-        <el-table-column label="到账状态" width="140">
+        <el-table-column label="付款状态" width="140">
           <template #default="{ row }">
             <el-tag
               v-if="getRecordSettlementStatus(row) === 'remaining'"
@@ -629,7 +660,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showPaymentDialog" :title="isEditingPayment ? '编辑付款记录' : '新增付款记录'" width="700px">
+    <el-dialog v-model="showPaymentDialog" :title="isEditingPayment ? '编辑产品明细' : '新增产品明细'" width="700px">
       <el-form :model="paymentForm" label-width="110px">
         <el-form-item label="记录ID">
           <el-input v-model="paymentForm.id" placeholder="自动生成，可自定义" />
@@ -641,6 +672,11 @@
         </el-form-item>
         <el-form-item label="客户姓名">
           <el-input v-model="paymentForm.customerName" readonly />
+        </el-form-item>
+        <el-form-item label="收款主体">
+          <el-select v-model="paymentForm.receivingEntityId" placeholder="选择收款主体" filterable style="width: 100%;">
+            <el-option v-for="e in activeReceivingEntities" :key="e.id" :label="e.fullName" :value="e.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="币种">
           <el-select v-model="paymentForm.currency" filterable allow-create default-first-option placeholder="选择或输入币种" style="width: 100%;">
@@ -685,8 +721,24 @@
         <el-form-item label="交货日期">
           <el-date-picker v-model="paymentForm.deliveryDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
         </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="paymentForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPaymentDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmPayment">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 收款流水编辑对话框 -->
+    <el-dialog v-model="showReceiptDialog" :title="isEditingReceipt ? '编辑收款流水' : '新增收款流水'" width="550px">
+      <div style="margin-bottom: 12px; padding: 8px 12px; background: #f0f9ff; border-radius: 4px; color: #409eff; font-size: 13px;">
+        订单编号：<b>{{ receiptForm.orderNo }}</b> | 收款主体：<b>{{ getEntityName(receiptForm.receivingEntityId) }}</b>
+      </div>
+      <el-form :model="receiptForm" label-width="100px">
         <el-form-item label="付款批次">
-          <el-select v-model="paymentForm.paymentBatch" placeholder="选择批次">
+          <el-select v-model="receiptForm.paymentBatch" placeholder="选择批次" style="width: 100%;">
             <el-option label="第1笔" value="第1笔" />
             <el-option label="第2笔" value="第2笔" />
             <el-option label="第3笔" value="第3笔" />
@@ -695,23 +747,21 @@
           </el-select>
         </el-form-item>
         <el-form-item label="付款类型">
-          <el-select v-model="paymentForm.paymentType" placeholder="选择类型">
+          <el-select v-model="receiptForm.paymentType" placeholder="选择类型" style="width: 100%;">
             <el-option label="定金" value="定金" />
             <el-option label="尾款" value="尾款" />
             <el-option label="全款" value="全款" />
+            <el-option label="余款抵扣" value="余款抵扣" />
           </el-select>
         </el-form-item>
-        <el-form-item label="付款比例">
-          <el-input v-model="paymentForm.paymentRatio" placeholder="如 30% 或 30" style="width: 100%" />
-        </el-form-item>
         <el-form-item label="付款日期">
-          <el-date-picker v-model="paymentForm.paymentDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
+          <el-date-picker v-model="receiptForm.paymentDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="付款金额">
-          <el-input-number v-model="paymentForm.paymentAmount" :min="0" :precision="2" style="width: 100%" />
+          <el-input-number v-model="receiptForm.paymentAmount" :min="0" :precision="2" style="width: 100%" />
         </el-form-item>
         <el-form-item label="付款方式">
-          <el-select v-model="paymentForm.paymentMethod" placeholder="选择方式">
+          <el-select v-model="receiptForm.paymentMethod" placeholder="选择方式" style="width: 100%;">
             <el-option label="银行转账" value="银行转账" />
             <el-option label="支付宝" value="支付宝" />
             <el-option label="微信" value="微信" />
@@ -720,18 +770,18 @@
           </el-select>
         </el-form-item>
         <el-form-item label="到账状态">
-          <el-select v-model="paymentForm.arrivalStatus" placeholder="选择状态">
+          <el-select v-model="receiptForm.arrivalStatus" placeholder="选择状态" style="width: 100%;">
             <el-option label="已到账" value="已到账" />
             <el-option label="未到账" value="未到账" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="paymentForm.remark" type="textarea" :rows="2" />
+          <el-input v-model="receiptForm.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showPaymentDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmPayment">确定</el-button>
+        <el-button @click="showReceiptDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmReceipt">确定</el-button>
       </template>
     </el-dialog>
 
@@ -931,6 +981,7 @@ const followupDate = ref('')
 const paymentKeyword = ref('')
 const paymentFilterCustomer = ref('')
 const paymentFilterStatus = ref('')
+const filterReceivingEntity = ref('')
 const showOnlyUrgent = ref(false)
 
 const showCustomerDialog = ref(false)
@@ -1130,6 +1181,7 @@ const paymentForm = reactive({
   customerId: '',
   customerName: '',
   currency: 'USD',
+  receivingEntityId: '',
   orderNo: '',
   orderDate: new Date().toISOString().split('T')[0],
   productName: '',
@@ -1141,15 +1193,141 @@ const paymentForm = reactive({
   unitPrice: 0,
   orderAmount: 0,
   deliveryDate: '',
+  remark: ''
+})
+
+// 收款流水表单
+const showReceiptDialog = ref(false)
+const isEditingReceipt = ref(false)
+const editingReceiptId = ref('')
+const receiptForm = reactive({
+  orderNo: '',
+  receivingEntityId: '',
   paymentBatch: '第1笔',
   paymentType: '定金',
-  paymentRatio: '',
   paymentDate: new Date().toISOString().split('T')[0],
   paymentAmount: 0,
   paymentMethod: '银行转账',
-  arrivalStatus: '未到账',
+  arrivalStatus: '已到账',
   remark: ''
 })
+
+// 收款主体选项（仅启用的）
+const activeReceivingEntities = computed(() => {
+  return (store.receivingEntities || []).filter(e => e.isActive)
+})
+
+// 所有收款主体（含停用的，用于显示历史数据名称）
+const allReceivingEntities = computed(() => {
+  return store.receivingEntities || []
+})
+
+function getEntityName(entityId) {
+  if (!entityId) return '—'
+  const entity = allReceivingEntities.value.find(e => e.id === entityId)
+  return entity ? entity.fullName : '—'
+}
+
+// 按订单获取收款流水
+function getReceiptsByOrder(orderNo) {
+  if (!orderNo) return []
+  return store.paymentReceipts.filter(r => r.orderNo === orderNo)
+}
+
+// 按订单获取已收款金额（仅已到账）
+function getOrderPaidAmount(orderNo) {
+  return getReceiptsByOrder(orderNo)
+    .filter(r => r.arrivalStatus === '已到账')
+    .reduce((sum, r) => sum + (Number(r.paymentAmount) || 0), 0)
+}
+
+// 按订单计算付款比例
+function getOrderPaymentRatio(orderNo, orderAmount) {
+  const paid = getOrderPaidAmount(orderNo)
+  if (!orderAmount || orderAmount <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((paid / orderAmount) * 100)))
+}
+
+// 收款流水增删改
+function handleAddReceipt(parentRow) {
+  isEditingReceipt.value = false
+  editingReceiptId.value = ''
+  receiptForm.orderNo = parentRow.orderNo
+  receiptForm.receivingEntityId = parentRow.receivingEntityId
+  receiptForm.paymentBatch = '第1笔'
+  receiptForm.paymentType = '定金'
+  receiptForm.paymentDate = new Date().toISOString().split('T')[0]
+  receiptForm.paymentAmount = 0
+  receiptForm.paymentMethod = '银行转账'
+  receiptForm.arrivalStatus = '已到账'
+  receiptForm.remark = ''
+  showReceiptDialog.value = true
+}
+
+function handleEditReceipt(receipt, parentRow) {
+  isEditingReceipt.value = true
+  editingReceiptId.value = receipt.id
+  receiptForm.orderNo = receipt.orderNo
+  receiptForm.receivingEntityId = receipt.receivingEntityId || parentRow.receivingEntityId
+  receiptForm.paymentBatch = receipt.paymentBatch
+  receiptForm.paymentType = receipt.paymentType
+  receiptForm.paymentDate = receipt.paymentDate
+  receiptForm.paymentAmount = Number(receipt.paymentAmount) || 0
+  receiptForm.paymentMethod = receipt.paymentMethod
+  receiptForm.arrivalStatus = receipt.arrivalStatus
+  receiptForm.remark = receipt.remark
+  showReceiptDialog.value = true
+}
+
+function confirmReceipt() {
+  if (!receiptForm.paymentAmount || receiptForm.paymentAmount <= 0) {
+    ElMessage.error('付款金额必须大于 0')
+    return
+  }
+  if (isEditingReceipt.value) {
+    const receipt = store.paymentReceipts.find(r => r.id === editingReceiptId.value)
+    if (receipt) {
+      Object.assign(receipt, {
+        paymentBatch: receiptForm.paymentBatch,
+        paymentType: receiptForm.paymentType,
+        paymentDate: receiptForm.paymentDate,
+        paymentAmount: receiptForm.paymentAmount,
+        paymentMethod: receiptForm.paymentMethod,
+        arrivalStatus: receiptForm.arrivalStatus,
+        remark: receiptForm.remark
+      })
+    }
+    ElMessage.success('收款流水已更新')
+  } else {
+    store.paymentReceipts.push({
+      id: generateId('pr'),
+      orderNo: receiptForm.orderNo,
+      receivingEntityId: receiptForm.receivingEntityId,
+      paymentBatch: receiptForm.paymentBatch,
+      paymentType: receiptForm.paymentType,
+      paymentDate: receiptForm.paymentDate,
+      paymentAmount: receiptForm.paymentAmount,
+      paymentMethod: receiptForm.paymentMethod,
+      arrivalStatus: receiptForm.arrivalStatus,
+      remark: receiptForm.remark,
+      createdAt: receiptForm.paymentDate
+    })
+    ElMessage.success('收款流水已新增')
+  }
+  saveToLocalStorage()
+  showReceiptDialog.value = false
+}
+
+function handleDeleteReceipt(receipt) {
+  ElMessageBox.confirm('确认删除该笔收款流水？', '提示', { type: 'warning' }).then(() => {
+    const idx = store.paymentReceipts.findIndex(r => r.id === receipt.id)
+    if (idx > -1) {
+      store.paymentReceipts.splice(idx, 1)
+      saveToLocalStorage()
+      ElMessage.success('已删除')
+    }
+  }).catch(() => {})
+}
 
 const customerOptions = computed(() => {
   const names = store.customers.map(c => c.name).filter(Boolean)
@@ -1334,17 +1512,18 @@ const filteredPayments = computed(() => {
       p.customerName?.toLowerCase().includes(paymentKeyword.value.toLowerCase()) ||
       p.orderNo?.toLowerCase().includes(paymentKeyword.value.toLowerCase())
     const matchCustomer = !paymentFilterCustomer.value || p.customerId === paymentFilterCustomer.value
-    const matchStatus = !paymentFilterStatus.value || p.arrivalStatus === paymentFilterStatus.value
+    const matchEntity = !filterReceivingEntity.value || p.receivingEntityId === filterReceivingEntity.value
     // 催款提醒筛选：只显示近7天到期且未结清的订单
-    const matchUrgent = !showOnlyUrgent.value || 
+    const matchUrgent = !showOnlyUrgent.value ||
       (p.deliveryDate && isNearDeliveryDate(p.deliveryDate) && getRecordSettlementStatus(p) !== 'settled')
-    return matchKeyword && matchCustomer && matchStatus && matchUrgent
+    return matchKeyword && matchCustomer && matchEntity && matchUrgent
   })
 })
 
-// 按订单编号分组，计算每个订单的结清状态
+// 按订单编号分组，计算每个订单的结清状态（已收款来自 paymentReceipts）
 const orderSettlementMap = computed(() => {
   const map = {}
+  // 订单总金额来自产品明细行
   filteredPayments.value.forEach(p => {
     const orderNo = p.orderNo
     if (!orderNo) return
@@ -1352,8 +1531,18 @@ const orderSettlementMap = computed(() => {
       map[orderNo] = { orderAmount: 0, paidAmount: 0 }
     }
     map[orderNo].orderAmount += Number(p.orderAmount) || 0
-    if (p.arrivalStatus === '已到账') {
-      map[orderNo].paidAmount += Number(p.paymentAmount) || 0
+  })
+  // 已收款来自 paymentReceipts（按订单编号 + 收款主体筛选）
+  const entityFilter = filterReceivingEntity.value
+  store.paymentReceipts.forEach(r => {
+    const orderNo = r.orderNo
+    if (!orderNo) return
+    if (entityFilter && r.receivingEntityId !== entityFilter) return
+    if (!map[orderNo]) {
+      map[orderNo] = { orderAmount: 0, paidAmount: 0 }
+    }
+    if (r.arrivalStatus === '已到账') {
+      map[orderNo].paidAmount += Number(r.paymentAmount) || 0
     }
   })
   // 计算每个订单是否有未结清尾款
@@ -1375,48 +1564,23 @@ const orderSettlementMap = computed(() => {
 // 获取单条记录的结清状态（用于标签显示）
 function getRecordSettlementStatus(row) {
   const orderNo = row.orderNo
-  if (!orderNo) {
-    return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
-  }
+  if (!orderNo) return 'pending'
   const settlement = orderSettlementMap.value[orderNo]
-  if (!settlement) {
-    return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
-  }
-  if (settlement.hasRemaining) {
-    return 'remaining' // 尾款未结清
-  }
-  return row.arrivalStatus === '已到账' ? 'settled' : 'pending'
+  if (!settlement) return 'pending'
+  if (settlement.paidAmount === 0) return 'pending' // 未付款
+  if (settlement.hasRemaining) return 'remaining' // 尾款未结清
+  return 'settled'
 }
 
 // 计算付款比例（自动计算：已付款金额/订单金额）
 function parsePaymentRatio(row) {
-  // 1. 优先使用订单聚合的自动计算比例（为0时继续回退，不直接返回0）
+  // 使用订单聚合的已收款比例（已收款来自 paymentReceipts）
   const orderNo = row.orderNo
   if (orderNo && orderSettlementMap.value[orderNo]) {
     const settlement = orderSettlementMap.value[orderNo]
     if (settlement.orderAmount > 0) {
-      const ratio = Math.round((settlement.paidAmount / settlement.orderAmount) * 100)
-      if (ratio > 0) return Math.min(100, Math.max(0, ratio))
+      return Math.min(100, Math.max(0, Math.round((settlement.paidAmount / settlement.orderAmount) * 100)))
     }
-  }
-
-  // 2. 单条记录已到账且有付款金额时，按付款金额/订单金额计算
-  if (row.arrivalStatus === '已到账' && row.orderAmount > 0) {
-    const paidAmount = Number(row.paymentAmount) || 0
-    if (paidAmount > 0) {
-      return Math.min(100, Math.max(0, Math.round((paidAmount / row.orderAmount) * 100)))
-    }
-  }
-
-  // 3. 回退到导入的付款比例（Excel 中的 60%/100%/20%）
-  const ratio = row.paymentRatio
-  if (!ratio && ratio !== 0) return 0
-  if (typeof ratio === 'number') {
-    return Math.min(100, Math.max(0, ratio))
-  }
-  if (typeof ratio === 'string') {
-    const num = parseInt(ratio.replace('%', ''))
-    return Math.min(100, Math.max(0, isNaN(num) ? 0 : num))
   }
   return 0
 }
@@ -1472,10 +1636,6 @@ function getDeliveryReminder(deliveryDate) {
 
 const pendingPaymentCount = computed(() => {
   return filteredPayments.value.filter(p => getRecordSettlementStatus(p) !== 'settled').length
-})
-
-const settledPaymentCount = computed(() => {
-  return filteredStatsPayments.value.filter(p => p.arrivalStatus === '已到账').length
 })
 
 const remainingOrderCount = computed(() => {
@@ -1540,6 +1700,7 @@ const filteredStatsPayments = computed(() => {
 
 const filteredOrderSettlementMap = computed(() => {
   const map = {}
+  // 订单总金额来自产品明细行
   filteredStatsPayments.value.forEach(p => {
     const orderNo = p.orderNo
     if (!orderNo) return
@@ -1547,8 +1708,19 @@ const filteredOrderSettlementMap = computed(() => {
       map[orderNo] = { orderAmount: 0, paidAmount: 0 }
     }
     map[orderNo].orderAmount += Number(p.orderAmount) || 0
-    if (p.arrivalStatus === '已到账') {
-      map[orderNo].paidAmount += Number(p.paymentAmount) || 0
+  })
+  // 已收款来自 paymentReceipts（按币种+主体筛选）
+  const currFilter = statsDisplayCurrency.value
+  const entityFilter = filterReceivingEntity.value
+  store.paymentReceipts.forEach(r => {
+    const orderNo = r.orderNo
+    if (!orderNo) return
+    if (entityFilter && r.receivingEntityId !== entityFilter) return
+    if (!map[orderNo]) {
+      map[orderNo] = { orderAmount: 0, paidAmount: 0 }
+    }
+    if (r.arrivalStatus === '已到账') {
+      map[orderNo].paidAmount += Number(r.paymentAmount) || 0
     }
   })
   const result = {}
@@ -1587,10 +1759,20 @@ const partiallyPaidOrderCount = computed(() => {
     .filter(s => s.paidAmount > 0 && s.hasRemaining).length
 })
 
+// 已到账笔数和金额（来自 paymentReceipts）
+const settledPaymentCount = computed(() => {
+  const entityFilter = filterReceivingEntity.value
+  return store.paymentReceipts.filter(r =>
+    r.arrivalStatus === '已到账' &&
+    (!entityFilter || r.receivingEntityId === entityFilter)
+  ).length
+})
+
 const sumSettledAmount = computed(() => {
-  return filteredStatsPayments.value
-    .filter(p => p.arrivalStatus === '已到账')
-    .reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0)
+  const entityFilter = filterReceivingEntity.value
+  return store.paymentReceipts
+    .filter(r => r.arrivalStatus === '已到账' && (!entityFilter || r.receivingEntityId === entityFilter))
+    .reduce((sum, r) => sum + (Number(r.paymentAmount) || 0), 0)
 })
 
 const sumRemainingAmount = computed(() => {
@@ -1967,6 +2149,7 @@ function handleAddPayment() {
     customerId: '',
     customerName: '',
     currency: 'USD',
+    receivingEntityId: activeReceivingEntities.value[0]?.id || '',
     orderNo: '',
     orderDate: new Date().toISOString().split('T')[0],
     productName: '',
@@ -1978,13 +2161,6 @@ function handleAddPayment() {
     unitPrice: 0,
     orderAmount: 0,
     deliveryDate: '',
-    paymentBatch: '第1笔',
-    paymentType: '定金',
-    paymentRatio: '',
-    paymentDate: new Date().toISOString().split('T')[0],
-    paymentAmount: 0,
-    paymentMethod: '银行转账',
-    arrivalStatus: '未到账',
     remark: ''
   })
   showPaymentDialog.value = true
@@ -2430,64 +2606,62 @@ async function handlePaymentImport(event) {
   }
 
   ElMessageBox.confirm(
-    `检测到 ${result.data.length} 条付款记录，是否导入？\n注意：相同ID的记录将被覆盖`,
+    `检测到 ${result.data.length} 条记录，是否导入？\n系统将自动拆分为产品明细行和收款流水记录`,
     '确认导入',
     { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
   ).then(async () => {
     const importedPayments = []
+    const importedReceipts = []
+    const productLineMap = new Map() // 去重产品明细
+
     result.data.forEach(payment => {
       // 根据客户姓名查找客户ID
       let customerId = payment.customerId || ''
       if (!customerId && payment.customerName) {
         const customer = store.customers.find(c => c.name === payment.customerName)
-        if (customer) {
-          customerId = customer.id
+        if (customer) customerId = customer.id
+      }
+
+      // 收款主体校验与映射
+      let receivingEntityId = ''
+      if (payment.receivingEntityName) {
+        const entity = store.receivingEntities.find(e =>
+          e.fullName === payment.receivingEntityName || e.shortName === payment.receivingEntityName
+        )
+        if (!entity) {
+          ElMessage.error(`收款主体"${payment.receivingEntityName}"不存在，请先到主体管理页面添加`)
+          return
         }
-      }
-
-      // 生成ID
-      let id = payment.id
-      if (!id || !/^CPAY-/.test(id)) {
-        id = generateId('cp')
-      }
-
-      // 货币识别：优先使用检测到的货币，默认为 USD
-      let currency = payment.currency || ''
-      if (!currency && result.detectedCurrency) {
-        currency = result.detectedCurrency
-      }
-      if (!currency) {
-        currency = 'USD' // 默认货币为 USD
-      }
-
-      // 智能推断到账状态：Excel 无到账状态列时，
-      // 有付款日期且付款金额>0，或付款类型为"全款"且有付款金额 → 视为已到账
-      if (!payment.arrivalStatus) {
-        const hasPaid = Number(payment.paymentAmount) > 0
-        if ((payment.paymentDate && hasPaid) || (payment.paymentType === '全款' && hasPaid)) {
-          payment.arrivalStatus = '已到账'
-        } else {
-          payment.arrivalStatus = '未到账'
-        }
-      }
-
-      const idx = store.customerPayments.findIndex(p => p.id === id)
-      let rec
-      if (idx > -1) {
-        rec = {
-          ...store.customerPayments[idx],
-          ...payment,
-          id,
-          customerId,
-          currency // 保留识别到的货币
-        }
-        store.customerPayments[idx] = rec
+        receivingEntityId = entity.id
       } else {
-        rec = {
-          id,
+        // 未指定收款主体时使用第一个启用的
+        receivingEntityId = activeReceivingEntities.value[0]?.id || ''
+      }
+
+      // 货币
+      let currency = payment.currency || result.detectedCurrency || 'USD'
+
+      // 智能推断到账状态
+      let arrivalStatus = payment.arrivalStatus
+      if (!arrivalStatus) {
+        const hasPaid = Number(payment.paymentAmount) > 0
+        arrivalStatus = ((payment.paymentDate && hasPaid) || (payment.paymentType === '全款' && hasPaid)) ? '已到账' : '未到账'
+      }
+
+      // 产品明细行（去重：按 orderNo + productName + specModel）
+      const lineKey = `${payment.orderNo || ''}|${payment.productName || ''}|${payment.specModel || ''}`
+      let payId
+      if (productLineMap.has(lineKey)) {
+        payId = productLineMap.get(lineKey)
+      } else {
+        payId = payment.id && /^CPAY-/.test(payment.id) ? payment.id : generateId('cp')
+        productLineMap.set(lineKey, payId)
+        const productLine = {
+          id: payId,
           customerId,
           customerName: payment.customerName || '',
           currency,
+          receivingEntityId,
           orderNo: payment.orderNo || '',
           orderDate: payment.orderDate || '',
           productName: payment.productName || '',
@@ -2499,48 +2673,44 @@ async function handlePaymentImport(event) {
           unitPrice: Number(payment.unitPrice) || 0,
           orderAmount: Number(payment.orderAmount) || 0,
           deliveryDate: payment.deliveryDate || '',
+          remark: payment.remark || ''
+        }
+        const idx = store.customerPayments.findIndex(p => p.id === payId)
+        if (idx > -1) {
+          store.customerPayments[idx] = { ...store.customerPayments[idx], ...productLine }
+        } else {
+          store.customerPayments.unshift(productLine)
+        }
+        importedPayments.push(productLine)
+      }
+
+      // 收款流水记录（每行有付款金额时创建）
+      const hasPayment = (payment.paymentAmount && Number(payment.paymentAmount) > 0) || payment.paymentType
+      if (hasPayment) {
+        const receipt = {
+          id: generateId('pr'),
+          orderNo: payment.orderNo || '',
+          receivingEntityId,
           paymentBatch: payment.paymentBatch || '第1笔',
           paymentType: payment.paymentType || '定金',
-          paymentRatio: payment.paymentRatio || '',
           paymentDate: payment.paymentDate || '',
           paymentAmount: Number(payment.paymentAmount) || 0,
           paymentMethod: payment.paymentMethod || '银行转账',
-          arrivalStatus: payment.arrivalStatus || '未到账',
-          remark: payment.remark || ''
+          arrivalStatus,
+          remark: payment.remark || '',
+          createdAt: payment.paymentDate || new Date().toISOString().split('T')[0]
         }
-        store.customerPayments.unshift(rec)
+        store.paymentReceipts.push(receipt)
+        importedReceipts.push(receipt)
       }
-      importedPayments.push(rec)
     })
     saveToLocalStorage()
 
+    const msg = `成功导入 ${importedPayments.length} 条产品明细 + ${importedReceipts.length} 条收款流水`
     if (!store.localMode) {
-      try {
-        localStorage.removeItem('supabase_rls_failed')
-        let syncSuccess = 0
-        let syncFail = 0
-        const failReasons = []
-        for (const p of importedPayments) {
-          const r = await syncToSupabase('customer_payments', p)
-          if (r.success) syncSuccess++
-          else {
-            syncFail++
-            const reason = r.error || r.rawError || '未知错误'
-            if (failReasons.length < 3 && !failReasons.includes(reason)) failReasons.push(reason)
-          }
-        }
-        if (syncFail === 0) {
-          ElMessage.success(`成功导入 ${importedPayments.length} 条付款记录并已同步到云端`)
-        } else {
-          const detail = failReasons.length > 0 ? `\n失败原因：${failReasons.join('；')}` : ''
-          ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedPayments.length} 条，云端同步成功 ${syncSuccess} 条，失败 ${syncFail} 条${detail}` })
-        }
-      } catch (e) {
-        console.error('云端同步失败:', e)
-        ElMessage({ type: 'warning', duration: 6000, message: `导入成功 ${importedPayments.length} 条，但云端同步失败：${e.message || e}` })
-      }
+      ElMessage.success(msg + '（本地已保存，云端同步待后续处理）')
     } else {
-      ElMessage.success(`成功导入 ${importedPayments.length} 条付款记录（本地模式）`)
+      ElMessage.success(msg + '（本地模式）')
     }
   }).catch(() => {})
 }
@@ -3566,6 +3736,50 @@ watch(() => store.customerFollowUps, () => {}, { deep: true })
 
 .followup-detail-dialog :deep(.el-descriptions__content) {
   min-height: 40px;
+}
+
+.receipt-sub-table {
+  padding: 12px 20px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.receipt-sub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.receipt-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.receipt-summary {
+  display: flex;
+  gap: 24px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #475569;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.receipt-summary b {
+  color: #1e293b;
+}
+
+.text-green {
+  color: #67c23a !important;
+}
+
+.text-red {
+  color: #f56c6c !important;
 }
 </style>
 
