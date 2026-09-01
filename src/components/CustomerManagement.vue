@@ -947,7 +947,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { store, authStore, addCustomer, updateCustomer, deleteCustomer, addLogisticsCompany, addCustomerGroup, updateCustomerGroup, deleteCustomerGroup, syncAllFromSupabase, generateId, saveToLocalStorage, isValidPaymentId } from '../store.js'
-import { exportToExcel } from '../utils/excelExport.js'
+import { exportToExcel, exportMultiSheetExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync, getPaymentDateFields, getPaymentAmountFields } from '../utils/excelImport.js'
 import FileUploader from './FileUploader.vue'
 import { getFileUrlFromSupabase, deleteFileFromSupabase, syncToSupabase, getSupabase, deleteFromSupabase } from '../supabase.js'
@@ -2288,9 +2288,10 @@ function previewPayments() {
 }
 
 function exportPayments() {
-  const headers = ['客户姓名', '订单编号', '订单日期', '产品名称', '规格型号', '颜色', '内存配置', '型号', '币种', '数量', '单价', '订单金额', '交货日期', '付款批次', '付款类型', '付款比例', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
-  const data = filteredPayments.value.map(p => [
+  const productHeaders = ['客户姓名', '收款主体', '订单编号', '订单日期', '产品名称', '规格型号', '颜色', '内存配置', '型号', '币种', '数量', '单价', '订单金额', '交货日期', '备注']
+  const productData = filteredPayments.value.map(p => [
     p.customerName || '',
+    getEntityName(p.receivingEntityId),
     p.orderNo || '',
     p.orderDate || '',
     p.productName || '',
@@ -2303,16 +2304,37 @@ function exportPayments() {
     p.unitPrice || 0,
     p.orderAmount || 0,
     p.deliveryDate || '',
-    p.paymentBatch || '',
-    p.paymentType || '',
-    p.paymentRatio || '',
-    p.paymentDate || '',
-    p.paymentAmount || 0,
-    p.paymentMethod || '',
-    p.arrivalStatus || '',
     p.remark || ''
   ])
-  exportToExcel('客户付款记录', headers, data)
+
+  const visibleOrderNos = new Set(filteredPayments.value.map(p => p.orderNo))
+  const receiptHeaders = ['流水ID', '订单编号', '收款主体', '付款批次', '付款类型', '付款日期', '付款金额', '付款方式', '到账状态', '备注']
+  const receiptData = store.paymentReceipts
+    .filter(r => {
+      if (!visibleOrderNos.has(r.orderNo)) return false
+      if (filterReceivingEntity.value && r.receivingEntityId !== filterReceivingEntity.value) return false
+      return true
+    })
+    .map(r => [
+      r.id || '',
+      r.orderNo || '',
+      getEntityName(r.receivingEntityId),
+      r.paymentBatch || '',
+      r.paymentType || '',
+      r.paymentDate || '',
+      r.paymentAmount || 0,
+      r.paymentMethod || '',
+      r.arrivalStatus || '',
+      r.remark || ''
+    ])
+
+  exportMultiSheetExcel(
+    [
+      { sheetName: '产品明细', headers: productHeaders, data: productData },
+      { sheetName: '收款流水', headers: receiptHeaders, data: receiptData }
+    ],
+    '客户付款记录'
+  )
 }
 
 function exportCustomers() {
