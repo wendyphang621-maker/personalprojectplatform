@@ -975,13 +975,13 @@ watch(activeTab, (val) => {
 })
 
 const searchKeyword = ref('')
-const filterGroup = ref('')
+const filterGroup = ref(undefined)
 const followupCustomerId = ref('')
 const followupDate = ref('')
 const paymentKeyword = ref('')
-const paymentFilterCustomer = ref('')
+const paymentFilterCustomer = ref(undefined)
 const paymentFilterStatus = ref('')
-const filterReceivingEntity = ref('')
+const filterReceivingEntity = ref(undefined)
 const showOnlyUrgent = ref(false)
 
 const showCustomerDialog = ref(false)
@@ -2283,6 +2283,11 @@ async function confirmPayment() {
   showPaymentDialog.value = false
 }
 
+// 去除规格/颜色末尾的 "(FOC)" 免费赠送标注，避免混入规格文字
+function stripFocMark(val) {
+  return typeof val === 'string' ? val.replace(/\s*\(\s*FOC\s*\)\s*$/i, '').trim() : (val || '')
+}
+
 function previewPayments() {
   showPaymentPreviewDialog.value = true
 }
@@ -2685,8 +2690,8 @@ async function handlePaymentImport(event) {
           orderNo: payment.orderNo || '',
           orderDate: payment.orderDate || '',
           productName: payment.productName || '',
-          specModel: payment.specModel || '',
-          color: payment.color || '',
+          specModel: stripFocMark(payment.specModel),
+          color: stripFocMark(payment.color),
           model: payment.model || '',
           memoryConfig: payment.memoryConfig || '',
           quantity: Number(payment.quantity) || 0,

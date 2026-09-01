@@ -4,7 +4,7 @@
       <el-tab-pane label="大货订单台账" name="main">
         <div class="tab-content">
           <div class="search-bar">
-            <el-input v-model="searchKeyword" placeholder="搜索订单号/客户" clearable style="width: 200px" />
+            <el-input v-model="searchKeyword" placeholder="搜索订单号/客户" :prefix-icon="Search" clearable style="width: 200px" />
             <el-input v-model="filterPO" placeholder="PO号" clearable style="width: 140px" />
             <el-select v-model="filterCustomer" placeholder="客户" clearable style="width: 120px">
               <el-option v-for="c in customerFilterOptions" :key="c" :label="c" :value="c" />
@@ -586,7 +586,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { store, addSalesOrder, updateSalesOrder, deleteSalesOrder, addLogisticsBill, updateLogisticsBill, deleteLogisticsBill, generateOrderNumber, generateMonthlyBills, syncAllFromSupabase } from '../store.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, Search } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 import { exportToExcel } from '../utils/excelExport.js'
 import { importFromExcel, fieldMappingPresets, showImportResult, importAndSync } from '../utils/excelImport.js'
@@ -613,19 +613,19 @@ onMounted(async () => {
 
 const searchKeyword = ref('')
 const filterMonth = ref('')
-const filterStatus = ref('')
-const filterPaymentStatus = ref('')
-const filterCurrency = ref('')
-const filterModel = ref('')
+const filterStatus = ref(undefined)
+const filterPaymentStatus = ref(undefined)
+const filterCurrency = ref(undefined)
+const filterModel = ref(undefined)
 const filterPO = ref('')
-const filterCustomer = ref('')
-const filterCountry = ref('')
-const filterLogisticsMethod = ref('')
+const filterCustomer = ref(undefined)
+const filterCountry = ref(undefined)
+const filterLogisticsMethod = ref(undefined)
 const logisticsKeyword = ref('')
-const logisticsStatus = ref('')
+const logisticsStatus = ref(undefined)
 const billKeyword = ref('')
-const billCountry = ref('')
-const paymentStatus = ref('')
+const billCountry = ref(undefined)
+const paymentStatus = ref(undefined)
 
 const showOrderDialog = ref(false)
 const showLogisticsDialog = ref(false)
@@ -700,7 +700,7 @@ const filteredOrders = computed(() => {
       o.id.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
       o.customerName.toLowerCase().includes(searchKeyword.value.toLowerCase())
     const matchStatus = !filterStatus.value || o.status === filterStatus.value
-    const matchPaymentStatus = filterPaymentStatus.value === '' || o.balanceSettled === filterPaymentStatus.value
+    const matchPaymentStatus = (filterPaymentStatus.value ?? '') === '' || o.balanceSettled === filterPaymentStatus.value
     const matchCurrency = !filterCurrency.value || o.currency === filterCurrency.value
     const matchModel = !filterModel.value || o.model === filterModel.value
     const matchPO = !filterPO.value || o.id.toLowerCase().includes(filterPO.value.toLowerCase())

@@ -412,7 +412,7 @@ function loadUserData(userId) {
         }
       }
       
-      return migratePaymentReceipts(migratePaymentIds(migrateSampleDeliveries(result)))
+      return stripFocSuffix(migratePaymentReceipts(migratePaymentIds(migrateSampleDeliveries(result))))
     }
     return { ...defaultData, user: { ...defaultUser, name: userId }, dataVersion: DATA_VERSION }
   } catch {
@@ -726,6 +726,21 @@ function migratePaymentIds(data) {
   return data
 }
 
+// 清洗：去除 customerPayments 规格型号/颜色末尾的 "(FOC)" 免费赠送标注（仅清理文字，不影响金额）
+function stripFocSuffix(data) {
+  if (!data.customerPayments || !Array.isArray(data.customerPayments)) return data
+  const clean = v => (typeof v === 'string' ? v.replace(/\s*\(\s*FOC\s*\)\s*$/i, '').trim() : v)
+  let cleaned = 0
+  data.customerPayments.forEach(p => {
+    const spec = clean(p.specModel)
+    const color = clean(p.color)
+    if (spec !== p.specModel) { p.specModel = spec; cleaned++ }
+    if (color !== p.color) { p.color = color; cleaned++ }
+  })
+  if (cleaned > 0) console.log(`[清洗] 已去除 ${cleaned} 处 "(FOC)" 标注`)
+  return data
+}
+
 // 迁移：将 customerPayments 中的付款字段拆分到 paymentReceipts 子表
 function migratePaymentReceipts(data) {
   if (!data.customerPayments || !Array.isArray(data.customerPayments)) {
@@ -871,7 +886,7 @@ export function saveToLocalStorage() {
 }
 
 export const authStore = reactive(loadAuth())
-export const store = reactive(migratePaymentReceipts(migrateSampleDeliveries({ user: defaultUser, ...defaultData })))
+export const store = reactive(stripFocSuffix(migratePaymentReceipts(migrateSampleDeliveries({ user: defaultUser, ...defaultData }))))
 
 let currentUserId = null
 
