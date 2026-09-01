@@ -2288,23 +2288,21 @@ function previewPayments() {
 }
 
 function exportPayments() {
-  const productHeaders = ['客户姓名', '收款主体', '订单编号', '订单日期', '产品名称', '规格型号', '颜色', '内存配置', '型号', '币种', '数量', '单价', '订单金额', '交货日期', '备注']
+  const productHeaders = ['客户姓名', '收款主体', '订单编号', '订单日期', '产品名称', '颜色', '币种', '数量', '单价', '订单金额', '付款比例', '付款金额', '交货日期']
   const productData = filteredPayments.value.map(p => [
     p.customerName || '',
     getEntityName(p.receivingEntityId),
     p.orderNo || '',
     p.orderDate || '',
     p.productName || '',
-    p.specModel || '',
     p.color || '',
-    p.memoryConfig || '',
-    p.model || '',
     p.currency || 'USD',
     p.quantity || 0,
     p.unitPrice || 0,
     p.orderAmount || 0,
-    p.deliveryDate || '',
-    p.remark || ''
+    getOrderPaymentRatio(p.orderNo, p.orderAmount) + '%',
+    getOrderPaidAmount(p.orderNo),
+    p.deliveryDate || ''
   ])
 
   const visibleOrderNos = new Set(filteredPayments.value.map(p => p.orderNo))
